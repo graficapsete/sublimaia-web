@@ -2,9 +2,10 @@ services:
   sublimaia:
     image: node:20-bookworm
     working_dir: /app
-    command: sh -c "npm install --omit=dev && node server.js"
-    volumes:
-      - ./:/app
+    command: >-
+      sh -c "node -e \"fetch('https://github.com/graficapsete/sublimaia-web/archive/refs/heads/main.tar.gz').then(r=>r.arrayBuffer()).then(b=>require('fs').writeFileSync('/tmp/sublimaia.tgz',Buffer.from(b)))\" &&
+      mkdir -p /app && tar -xzf /tmp/sublimaia.tgz --strip-components=1 -C /app &&
+      npm install --omit=dev && node server.js"
     labels:
       - traefik.enable=true
       - traefik.http.routers.sublimaia.rule=Host(`sublimaia.srv1874043.hstgr.cloud`)
