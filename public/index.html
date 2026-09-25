@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; img-src 'self' blob: data:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SublimaIa</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+
+  <header class="topbar">
+    <div class="brand">
+      <svg viewBox="0 0 28 28" width="24" height="24" aria-hidden="true">
+        <path d="M4 22 C 4 8, 14 6, 24 6" fill="none" stroke="currentColor" stroke-width="2"/>
+        <rect x="1.5" y="19.5" width="5" height="5" fill="#20242b" stroke="currentColor" stroke-width="1.6"/>
+        <rect x="21.5" y="3.5" width="5" height="5" fill="#20242b" stroke="currentColor" stroke-width="1.6"/>
+      </svg>
+      <span>SublimaIa</span>
+      <span id="file-name" class="file-name"></span>
+    </div>
+    <div class="topbar-actions">
+      <div id="lang" class="lang" role="group" data-i18n-aria="lang.aria"></div>
+      <button id="btn-open" class="btn" title="Ctrl+O" data-i18n="btn.open">Abrir imagem…</button>
+      <button id="btn-export-top" class="btn btn-primary" disabled title="Ctrl+S" data-i18n="btn.exportTop">Exportar…</button>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <section class="viewer" id="viewer">
+      <div class="panes" id="panes">
+        <div class="pane-wrap">
+          <div class="pane-head"><span data-i18n="pane.original">Original</span><span id="orig-info" class="muted"></span></div>
+          <div class="pane" id="pane-orig">
+            <div class="content" id="content-orig"><img id="img-orig" alt="Imagem original" data-i18n-alt="alt.original" draggable="false"></div>
+          </div>
+        </div>
+        <div class="pane-wrap">
+          <div class="pane-head">
+            <span data-i18n="pane.vector">Vetor</span>
+            <span id="vec-info" class="muted"></span>
+            <button id="btn-outline" class="chip" aria-pressed="false" disabled title="Mostrar só os contornos das formas" data-i18n-title="outline.title" data-i18n="outline.label">Contornos</button>
+          </div>
+          <div class="pane" id="pane-vec">
+            <div class="content" id="content-vec"><img id="img-vec" alt="Resultado vetorizado" data-i18n-alt="alt.vector" draggable="false"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="empty" class="empty">
+        <div class="empty-card">
+          <svg viewBox="0 0 64 64" width="56" height="56" aria-hidden="true">
+            <path d="M8 50 C 8 20, 30 14, 56 14" fill="none" stroke="#4d8dff" stroke-width="3"/>
+            <rect x="4" y="46" width="9" height="9" fill="#20242b" stroke="#4d8dff" stroke-width="2.5"/>
+            <rect x="51" y="9" width="9" height="9" fill="#20242b" stroke="#4d8dff" stroke-width="2.5"/>
+          </svg>
+          <h1 data-i18n="empty.title">Solte uma imagem aqui</h1>
+          <p data-i18n="empty.text">PNG, JPG, WebP, BMP ou GIF. Você também pode colar da área de transferência com Ctrl+V.</p>
+          <button id="btn-open-empty" class="btn btn-primary" data-i18n="empty.button">Escolher arquivo…</button>
+        </div>
+      </div>
+
+      <div class="viewer-toolbar" id="zoombar" hidden>
+        <button id="z-out" class="icon-btn" title="Diminuir zoom (−)" aria-label="Diminuir zoom" data-i18n-title="zoom.outTitle" data-i18n-aria="zoom.out">−</button>
+        <span id="z-label" class="z-label">100%</span>
+        <button id="z-in" class="icon-btn" title="Aumentar zoom (+)" aria-label="Aumentar zoom" data-i18n-title="zoom.inTitle" data-i18n-aria="zoom.in">+</button>
+        <span class="sep"></span>
+        <button id="z-fit" class="text-btn" title="Ctrl+0" data-i18n="zoom.fit">Ajustar</button>
+        <button id="z-100" class="text-btn">100%</button>
+      </div>
+
+      <div id="busy" class="busy" hidden>
+        <div class="busy-card">
+          <div class="busy-row"><span class="spinner"></span><span id="busy-stage" data-i18n="busy.preparing">Preparando…</span></div>
+          <div class="bar"><div id="busy-bar"></div></div>
+          <button id="btn-cancel" class="text-btn" data-i18n="busy.cancel">Cancelar</button>
+        </div>
+      </div>
+
+      <div id="dropveil" class="dropveil" hidden><span data-i18n="drop.veil">Solte para abrir</span></div>
+    </section>
+
+    <aside class="sidebar" aria-label="Ajustes" data-i18n-aria="sidebar.aria">
+
+      <section class="group">
+        <label class="field-label" for="preset" data-i18n="preset.label">Ponto de partida</label>
+        <select id="preset" class="select">
+          <option value="logo" data-i18n="preset.logo">Logotipo, ilustração ou desenho</option>
+          <option value="lowq" data-i18n="preset.lowq">Imagem de baixa qualidade</option>
+          <option value="lineart" data-i18n="preset.lineart">Desenho a traço (preto e branco)</option>
+          <option value="gray" data-i18n="preset.gray">Tons de cinza</option>
+          <option value="photo" data-i18n="preset.photo">Foto, muitas cores</option>
+          <option value="custom" data-i18n="preset.custom" hidden>Personalizado</option>
+        </select>
+      </section>
+
+      <section class="group">
+        <h2 data-i18n="group.treat">Tratar a imagem</h2>
+
+        <div class="row">
+          <div class="row-head"><span data-i18n="p.upscale">Ampliar antes de vetorizar</span></div>
+          <div class="seg" id="p-upscale" role="group" aria-label="Ampliação" data-i18n-aria="p.upscale.aria">
+            <button data-value="1">1×</button><button data-value="2">2×</button>
+            <button data-value="3">3×</button><button data-value="4">4×</button>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="row-head"><label for="p-denoise" data-i18n="p.denoise">Remover ruído e artefatos JPEG</label><output id="o-denoise"></output></div>
+          <input type="range" id="p-denoise" min="0" max="2" step="1">
+        </div>
+
+        <div class="row">
+          <div class="row-head"><label for="p-sharpen" data-i18n="p.sharpen">Nitidez das bordas</label><output id="o-sharpen"></output></div>
+          <input type="range" id="p-sharpen" min="0" max="100" step="5">
+        </div>
+
+        <label class="check"><input type="checkbox" id="p-autoContrast"><span data-i18n="p.autoContrast">Corrigir contraste automaticamente</span></label>
+      </section>
+
+      <section class="group">
+        <h2 data-i18n="group.vectorize">Vetorização</h2>
+
+        <div class="row">
+          <div class="row-head"><span data-i18n="p.colors">Cores</span></div>
+          <div class="seg" id="p-mode" role="group" aria-label="Modo de cor" data-i18n-aria="p.mode.aria">
+            <button data-value="color" data-i18n="p.mode.color">Coloridas</button><button data-value="gray" data-i18n="p.mode.gray">Cinza</button><button data-value="bw" data-i18n="p.mode.bw">P&amp;B</button>
+          </div>
+        </div>
+
+        <div class="row" id="row-colors">
+          <div class="row-head"><label for="p-colors" data-i18n="p.maxColors">Máximo de cores</label><output id="o-colors"></output></div>
+          <input type="range" id="p-colors" min="2" max="64" step="1">
+        </div>
+
+        <div class="row" id="row-threshold" hidden>
+          <div class="row-head"><label for="p-threshold" data-i18n="p.threshold">Limiar de preto</label><output id="o-threshold"></output></div>
+          <input type="range" id="p-threshold" min="0" max="255" step="1">
+          <label class="check"><input type="checkbox" id="p-autoThreshold"><span data-i18n="p.autoThreshold">Definir automaticamente</span></label>
+        </div>
+
+        <div class="row">
+          <div class="row-head"><label for="p-detail" data-i18n="p.detail">Ignorar manchas menores que</label><output id="o-detail"></output></div>
+          <input type="range" id="p-detail" min="0" max="30" step="1">
+        </div>
+
+        <div class="row">
+          <div class="row-head"><label for="p-smooth" data-i18n="p.smooth">Suavidade das curvas</label><output id="o-smooth"></output></div>
+          <input type="range" id="p-smooth" min="0" max="100" step="5">
+        </div>
+
+        <label class="check"><input type="checkbox" id="p-removeBg"><span data-i18n="p.removeBg">Remover fundo (cor dos cantos)</span></label>
+        <label class="check"><input type="checkbox" id="p-antiGap"><span data-i18n="p.antiGap">Evitar frestas entre as cores</span></label>
+      </section>
+
+      <section class="group group-run">
+        <button id="btn-run" class="btn btn-primary btn-wide" disabled data-i18n="run.button">Vetorizar</button>
+        <label class="check"><input type="checkbox" id="p-auto" checked><span data-i18n="run.auto">Atualizar ao mudar os ajustes</span></label>
+        <dl id="stats" class="stats" hidden>
+          <div><dt data-i18n="stats.time">Tempo</dt><dd id="s-time">–</dd></div>
+          <div><dt data-i18n="stats.colors">Cores</dt><dd id="s-shapes">–</dd></div>
+          <div><dt data-i18n="stats.paths">Contornos</dt><dd id="s-paths">–</dd></div>
+          <div><dt data-i18n="stats.nodes">Nós</dt><dd id="s-nodes">–</dd></div>
+          <div><dt data-i18n="stats.size">Tamanho do SVG</dt><dd id="s-size">–</dd></div>
+        </dl>
+      </section>
+
+      <section class="group group-export">
+        <h2 data-i18n="group.export">Exportar</h2>
+        <div class="seg seg-wide" id="fmt" role="group" aria-label="Formato de exportação" data-i18n-aria="fmt.aria">
+          <button data-value="svg" class="on">SVG</button><button data-value="pdf">PDF</button>
+          <button data-value="eps">EPS</button><button data-value="dxf">DXF</button><button data-value="png">PNG</button>
+        </div>
+        <p id="fmt-hint" class="hint"></p>
+
+        <div id="png-opts" class="row" hidden>
+          <div class="row-head"><span data-i18n="png.size">Tamanho do PNG</span></div>
+          <div class="seg" id="png-scale" role="group" aria-label="Escala do PNG" data-i18n-aria="png.scale.aria">
+            <button data-value="1">1×</button><button data-value="2" class="on">2×</button>
+            <button data-value="4">4×</button><button data-value="8">8×</button>
+          </div>
+          <label class="check"><input type="checkbox" id="png-transparent" checked><span data-i18n="png.transparent">Fundo transparente</span></label>
+        </div>
+
+        <button id="btn-export" class="btn btn-primary btn-wide" disabled>Exportar como SVG…</button>
+        <button id="btn-copy" class="btn btn-wide" disabled data-i18n="export.copy">Copiar código SVG</button>
+      </section>
+
+    </aside>
+  </main>
+</div>
+
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+<script src="i18n.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
