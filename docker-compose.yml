@@ -1,0 +1,22 @@
+services:
+  sublimaia:
+    image: node:20-bookworm
+    working_dir: /app
+    command: sh -c "npm install --omit=dev && node server.js"
+    volumes:
+      - ./:/app
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.sublimaia.rule=Host(`sublimaia.srv1874043.hstgr.cloud`)
+      - traefik.http.routers.sublimaia.entrypoints=websecure
+      - traefik.http.routers.sublimaia.tls=true
+      - traefik.http.routers.sublimaia.tls.certresolver=letsencrypt
+      - traefik.http.services.sublimaia.loadbalancer.server.port=3000
+    networks:
+      - traefik_proxy
+    restart: unless-stopped
+
+networks:
+  traefik_proxy:
+    external: true
+    name: traefik_proxy
