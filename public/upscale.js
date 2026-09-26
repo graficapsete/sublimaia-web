@@ -5,17 +5,24 @@
   const upscaleApp = $('#upscale-app');
   const tabVector = $('#btn-tab-vector');
   const tabUpscale = $('#btn-tab-upscale');
+  const tabBg = $('#btn-tab-bg');
+  const bgApp = $('#bg-app');
   const fileInput = $('#upscale-file');
   const state = { file: null, url: null, width: 0, height: 0 };
 
-  function setTab(upscale) {
-    vectorApp.hidden = upscale;
-    upscaleApp.hidden = !upscale;
-    tabVector.classList.toggle('active', !upscale);
-    tabUpscale.classList.toggle('active', upscale);
+  function setTab(mode) {
+    const isUpscale = mode === 'upscale';
+    const isBg = mode === 'bg';
+    vectorApp.hidden = isUpscale || isBg;
+    upscaleApp.hidden = !isUpscale;
+    bgApp.hidden = !isBg;
+    tabVector.classList.toggle('active', mode === 'vector');
+    tabUpscale.classList.toggle('active', isUpscale);
+    tabBg.classList.toggle('active', isBg);
   }
-  tabVector.addEventListener('click', () => setTab(false));
-  tabUpscale.addEventListener('click', () => setTab(true));
+  tabVector.addEventListener('click', () => setTab('vector'));
+  tabUpscale.addEventListener('click', () => setTab('upscale'));
+  tabBg.addEventListener('click', () => setTab('bg'));
 
   function updatePrintSize() {
     const dpi = Number($('#upscale-dpi').value) || 300;

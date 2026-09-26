@@ -61,6 +61,63 @@ app.post('/api/upscale', async (req, res) => {
   }
 });
 
+function parseHexColor(value) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(value || 'ffffff'));
+  if (!m) return [255, 255, 255];
+  return [parseInt(m[1].slice(0, 2), 16), parseInt(m[1].slice(2, 4), 16), parseInt(m[1].slice(4, 6), 16)];
+}
+
+app.post('/api/remove-background', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const input = decodeBase64(body.data);
+    const { data: pixels, info } = await sharp(input).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    const { width, height } = info;
+    if (width * height > 30000000) throw new Error('A imagem ultrapassa o limite de 30 milhões de pixels.');
+    let bg = parseHexColor(body.color);
+    if (body.mode !== 'manual') {
+      const side = Math.max(1, Math.min(24, Math.floor(Math.min(width, height) * 0.06)));
+      let r = 0, g = 0, b = 0, n = 0;
+      for (const [x0, y0] of [[0, 0], [width - side, 0], [0, height - side], [width - side, height - side]]) {
+        for (let y = y0; y < Math.min(height, y0 + side); y++) for (let x = x0; x < Math.min(width, x0 + side); x++) {
+          const i = (y * width + x) * 4; r += pixels[i]; g += pixels[i + 1]; b += pixels[i + 2]; n++;
+        }
+      }
+      bg = [Math.round(r / n), Math.round(g / n), Math.round(b / n)];
+    }
+    const tolerance = Math.max(0, Math.min(100, Number(body.tolerance) || 18));
+    const cut = tolerance / 100 * 441.67;
+    const softness = Math.max(0, Math.min(20, Number(body.softness) || 0));
+    const softDistance = softness * 8;
+    const alpha = new Uint8Array(width * height);
+    for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+      const p = (y * width + x) * 4;
+      const distance = Math.hypot(pixels[p] - bg[0], pixels[p + 1] - bg[1], pixels[p + 2] - bg[2]);
+      let a = distance <= cut ? 0 : distance >= cut + softDistance ? 255 : Math.round((distance - cut) / Math.max(1, softDistance) * 255);
+      if (body.preserveAlpha !== false) a = Math.round(a * pixels[p + 3] / 255);
+      alpha[y * width + x] = a;
+    }
+    const clean = Math.max(0, Math.min(3, Number(body.clean) || 0));
+    if (clean) {
+      const minNeighbors = clean * 2;
+      const before = new Uint8Array(alpha);
+      for (let y = 1; y < height - 1; y++) for (let x = 1; x < width - 1; x++) {
+        const at = y * width + x;
+        if (before[at] === 0) continue;
+        let neighbors = 0;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (dx || dy) neighbors += before[(y + dy) * width + x + dx] > 32 ? 1 : 0;
+        if (neighbors < minNeighbors) alpha[at] = 0;
+      }
+    }
+    for (let i = 0; i < width * height; i++) pixels[i * 4 + 3] = alpha[i];
+    const output = await sharp(pixels, { raw: { width, height, channels: 4 } }).png({ compressionLevel: 9 }).withMetadata({ density: 300 }).toBuffer();
+    const base = String(body.name || 'imagem').replace(/[^a-z0-9_-]+/gi, '_').replace(/\.[^.]+$/, '') || 'imagem';
+    res.set('Content-Type', 'image/png').set('Content-Disposition', `attachment; filename="${base}-sem-fundo.png"`).send(output);
+  } catch (err) {
+    res.status(400).json({ error: err.message || String(err) });
+  }
+});
+
 app.get('/api/outline/:id', (req, res) => {
   const job = jobs.get(req.params.id);
   if (!job) return res.status(404).json({ error: 'Resultado expirado.' });

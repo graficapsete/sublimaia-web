@@ -24,6 +24,7 @@
     <nav class="tab-switcher" aria-label="Ferramentas">
       <button id="btn-tab-vector" class="tab-btn active" type="button">Vetorizador</button>
       <button id="btn-tab-upscale" class="tab-btn" type="button">Upscaling</button>
+      <button id="btn-tab-bg" class="tab-btn" type="button">Remover fundo</button>
     </nav>
     <div class="topbar-actions">
       <div id="lang" class="lang" role="group" data-i18n-aria="lang.aria"></div>
@@ -236,11 +237,51 @@
       </section>
     </aside>
   </section>
+
+  <section id="bg-app" class="upscale-app bg-app" hidden aria-label="Remoção de fundo para DTF">
+    <div class="upscale-preview bg-preview">
+      <div id="bg-empty" class="empty-card">
+        <h1>Remoção de fundo para DTF</h1>
+        <p>Crie um PNG transparente com contorno limpo e sem rebarbas.</p>
+        <button id="bg-open-empty" class="btn btn-primary" type="button">Escolher imagem…</button>
+      </div>
+      <div id="bg-preview-wrap" class="upscale-preview-wrap" hidden>
+        <img id="bg-preview-image" alt="Prévia da imagem sem fundo">
+        <div id="bg-info" class="muted"></div>
+      </div>
+    </div>
+    <aside class="upscale-sidebar">
+      <section class="group">
+        <h2>Arquivo de origem</h2>
+        <button id="bg-open" class="btn btn-wide" type="button">Escolher imagem…</button>
+        <input id="bg-file" type="file" accept="image/png,image/jpeg,image/webp,image/bmp,image/tiff" hidden>
+      </section>
+      <section class="group">
+        <h2>Detecção do fundo</h2>
+        <div class="row"><div class="row-head"><label for="bg-mode">Amostra da cor</label></div><select id="bg-mode" class="select"><option value="corners">Cantos da imagem (automático)</option><option value="manual">Escolher cor manualmente</option></select></div>
+        <label id="bg-color-row" class="bg-color-row" hidden>Cor do fundo<input id="bg-color" type="color" value="#ffffff"></label>
+        <div class="row"><div class="row-head"><label for="bg-tolerance">Tolerância da cor</label><output id="bg-tolerance-out">18%</output></div><input id="bg-tolerance" type="range" min="0" max="100" step="1" value="18"></div>
+        <p class="hint">Aumente a tolerância para remover variações e sombras do fundo.</p>
+      </section>
+      <section class="group">
+        <h2>Contorno para DTF</h2>
+        <div class="row"><div class="row-head"><label for="bg-softness">Suavidade da borda</label><output id="bg-softness-out">3 px</output></div><input id="bg-softness" type="range" min="0" max="20" step="1" value="3"></div>
+        <div class="row"><div class="row-head"><label for="bg-clean">Limpeza de rebarbas</label><output id="bg-clean-out">Suave</output></div><input id="bg-clean" type="range" min="0" max="3" step="1" value="1"></div>
+        <label class="check"><input id="bg-preserve-alpha" type="checkbox" checked><span>Preservar transparência original</span></label>
+      </section>
+      <section class="group group-run">
+        <button id="bg-run" class="btn btn-primary btn-wide" type="button" disabled>Remover fundo</button>
+        <button id="bg-download" class="btn btn-wide" type="button" disabled>Baixar PNG transparente</button>
+        <div id="bg-status" class="hint"></div>
+      </section>
+    </aside>
+  </section>
 </div>
 
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 <script src="i18n.js"></script>
 <script src="app.js"></script>
 <script src="upscale.js"></script>
+<script src="background.js"></script>
 </body>
 </html>
