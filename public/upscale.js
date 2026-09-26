@@ -7,6 +7,7 @@
   const tabUpscale = $('#btn-tab-upscale');
   const tabBg = $('#btn-tab-bg');
   const bgApp = $('#bg-app');
+  const comparison = window.createComparison('upscale-compare');
   const fileInput = $('#upscale-file');
   const state = { file: null, url: null, width: 0, height: 0 };
 
@@ -42,6 +43,7 @@
     try { await img.decode(); } catch (_) { URL.revokeObjectURL(url); $('#upscale-status').textContent = 'Não foi possível abrir essa imagem.'; return; }
     if (state.url) URL.revokeObjectURL(state.url);
     Object.assign(state, { file, url, width: img.naturalWidth, height: img.naturalHeight });
+    comparison.reset(); comparison.setOriginal(url);
     $('#upscale-preview-image').src = url;
     $('#upscale-preview-wrap').hidden = false;
     $('#upscale-empty').hidden = true;
@@ -71,7 +73,7 @@
       const payload = { data: btoa(binary), name: state.file.name, width: Number($('#upscale-width').value), height: Number($('#upscale-height').value), dpi: Number($('#upscale-dpi').value), sharpen: Number($('#upscale-sharpen').value), denoise: Number($('#upscale-denoise').value), format: $('#upscale-format').value, quality: Number($('#upscale-quality').value) };
       const response = await fetch('/api/upscale', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
       if (!response.ok) throw new Error(await response.text());
-      const blob = await response.blob(); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = (state.file.name.replace(/\.[^.]+$/, '') || 'imagem') + '-upscaled.' + payload.format; a.click();
+      const blob = await response.blob(); comparison.setResult(blob); $('#upscale-preview-wrap').hidden = true; const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = (state.file.name.replace(/\.[^.]+$/, '') || 'imagem') + '-upscaled.' + payload.format; a.click();
       status.textContent = 'Imagem ampliada pronta para download.'; setTimeout(() => URL.revokeObjectURL(a.href), 1500);
     } catch (err) { status.textContent = 'Não foi possível processar: ' + (err.message || err); }
     finally { button.disabled = false; }

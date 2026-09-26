@@ -2,6 +2,7 @@
 (() => {
   const $ = (s) => document.querySelector(s);
   const state = { file: null, url: null, output: null };
+  const comparison = window.createComparison('bg-compare');
   const input = $('#bg-file');
   const labels = ['Desligada', 'Suave', 'Média', 'Forte'];
 
@@ -14,7 +15,7 @@
     if (!file) return;
     if (state.url) URL.revokeObjectURL(state.url);
     state.file = file; state.url = URL.createObjectURL(file); state.output = null;
-    $('#bg-preview-image').src = state.url; $('#bg-preview-wrap').hidden = false; $('#bg-empty').hidden = true;
+    comparison.reset(); comparison.setOriginal(state.url); $('#bg-preview-image').src = state.url; $('#bg-preview-wrap').hidden = false; $('#bg-empty').hidden = true;
     $('#bg-info').textContent = file.name; $('#bg-run').disabled = false; $('#bg-download').disabled = true; $('#bg-status').textContent = '';
   }
   $('#bg-open').addEventListener('click', () => input.click());
@@ -34,7 +35,7 @@
       const payload = { data: btoa(binary), name: state.file.name, mode: $('#bg-mode').value, color: $('#bg-color').value, tolerance: Number($('#bg-tolerance').value), softness: Number($('#bg-softness').value), clean: Number($('#bg-clean').value), preserveAlpha: $('#bg-preserve-alpha').checked };
       const response = await fetch('/api/remove-background', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
       if (!response.ok) throw new Error(await response.text());
-      state.output = await response.blob(); $('#bg-preview-image').src = URL.createObjectURL(state.output); $('#bg-download').disabled = false; status.textContent = 'Fundo removido. Confira o contorno e baixe o PNG transparente.';
+      state.output = await response.blob(); comparison.setResult(state.output); $('#bg-preview-wrap').hidden = true; $('#bg-download').disabled = false; status.textContent = 'Fundo removido. Compare o original e o resultado antes de baixar.';
     } catch (err) { status.textContent = 'Não foi possível remover o fundo: ' + (err.message || err); }
     finally { button.disabled = false; }
   });
