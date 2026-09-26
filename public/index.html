@@ -21,6 +21,10 @@
       <span>SublimaIa</span>
       <span id="file-name" class="file-name"></span>
     </div>
+    <nav class="tab-switcher" aria-label="Ferramentas">
+      <button id="btn-tab-vector" class="tab-btn active" type="button">Vetorizador</button>
+      <button id="btn-tab-upscale" class="tab-btn" type="button">Upscaling</button>
+    </nav>
     <div class="topbar-actions">
       <div id="lang" class="lang" role="group" data-i18n-aria="lang.aria"></div>
       <button id="btn-open" class="btn" title="Ctrl+O" data-i18n="btn.open">Abrir imagem…</button>
@@ -190,10 +194,53 @@
 
     </aside>
   </main>
+
+  <section id="upscale-app" class="upscale-app" hidden aria-label="Upscaling para impressão">
+    <div class="upscale-preview">
+      <div id="upscale-empty" class="empty-card">
+        <h1>Upscaling para impressão</h1>
+        <p>Aumente suas imagens mantendo detalhes e prepare o arquivo para impressão.</p>
+        <button id="upscale-open-empty" class="btn btn-primary" type="button">Escolher imagem…</button>
+      </div>
+      <div id="upscale-preview-wrap" class="upscale-preview-wrap" hidden>
+        <img id="upscale-preview-image" alt="Prévia da imagem para upscaling">
+        <div id="upscale-original-info" class="muted"></div>
+      </div>
+    </div>
+    <aside class="upscale-sidebar">
+      <section class="group">
+        <h2>Arquivo de origem</h2>
+        <button id="upscale-open" class="btn btn-wide" type="button">Escolher imagem…</button>
+        <input id="upscale-file" type="file" accept="image/png,image/jpeg,image/webp,image/bmp,image/tiff" hidden>
+      </section>
+      <section class="group">
+        <h2>Dimensões</h2>
+        <div class="row"><div class="row-head"><label for="upscale-scale">Ampliação</label></div><select id="upscale-scale" class="select"><option value="2">2×</option><option value="4">4×</option><option value="custom">Personalizado</option></select></div>
+        <div class="upscale-grid">
+          <label>Largura (px)<input id="upscale-width" type="number" min="1" max="12000"></label>
+          <label>Altura (px)<input id="upscale-height" type="number" min="1" max="12000"></label>
+        </div>
+        <div class="row"><div class="row-head"><label for="upscale-dpi">DPI para impressão</label><output id="upscale-dpi-out">300</output></div><input id="upscale-dpi" type="range" min="72" max="1200" step="1" value="300"></div>
+        <p id="upscale-print-size" class="hint">Tamanho de impressão: —</p>
+      </section>
+      <section class="group">
+        <h2>Qualidade</h2>
+        <div class="row"><div class="row-head"><label for="upscale-sharpen">Nitidez</label><output id="upscale-sharpen-out">35%</output></div><input id="upscale-sharpen" type="range" min="0" max="100" step="5" value="35"></div>
+        <div class="row"><div class="row-head"><label for="upscale-denoise">Redução de ruído</label></div><select id="upscale-denoise" class="select"><option value="0">Desligada</option><option value="1">Suave</option><option value="2">Forte</option></select></div>
+      </section>
+      <section class="group group-run">
+        <h2>Exportação</h2>
+        <div class="upscale-grid"><label>Formato<select id="upscale-format" class="select"><option value="png">PNG</option><option value="jpg">JPG</option><option value="webp">WebP</option></select></label><label>Qualidade<input id="upscale-quality" type="number" min="1" max="100" value="95"></label></div>
+        <button id="upscale-run" class="btn btn-primary btn-wide" type="button" disabled>Gerar imagem ampliada</button>
+        <div id="upscale-status" class="hint"></div>
+      </section>
+    </aside>
+  </section>
 </div>
 
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 <script src="i18n.js"></script>
 <script src="app.js"></script>
+<script src="upscale.js"></script>
 </body>
 </html>

@@ -33,6 +33,34 @@ app.post('/api/vectorize', async (req, res) => {
   }
 });
 
+app.post('/api/upscale', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const input = decodeBase64(body.data);
+    const meta = await sharp(input).metadata();
+    if (!meta.width || !meta.height) throw new Error('Imagem inválida.');
+    const width = Math.max(1, Math.min(12000, Math.round(Number(body.width) || meta.width * 2)));
+    const height = Math.max(1, Math.min(12000, Math.round(Number(body.height) || meta.height * 2)));
+    if (width * height > 50000000) throw new Error('A imagem final ultrapassa o limite de 50 milhões de pixels.');
+    const format = ['png', 'jpg', 'webp'].includes(body.format) ? body.format : 'png';
+    let image = sharp(input).resize({ width, height, fit: 'fill', kernel: sharp.kernel.lanczos3 });
+    const denoise = Math.max(0, Math.min(2, Number(body.denoise) || 0));
+    const sharpen = Math.max(0, Math.min(100, Number(body.sharpen) || 0));
+    if (denoise && Math.min(meta.width, meta.height) >= (denoise === 2 ? 5 : 3)) image = image.median(denoise === 2 ? 5 : 3);
+    if (sharpen) image = image.sharpen({ sigma: 0.5 + sharpen / 100 * 2 });
+    image = image.withMetadata({ density: Math.max(72, Math.min(1200, Number(body.dpi) || 300)) });
+    const quality = Math.max(1, Math.min(100, Number(body.quality) || 95));
+    if (format === 'jpg') image = image.jpeg({ quality, mozjpeg: true });
+    else if (format === 'webp') image = image.webp({ quality });
+    else image = image.png({ compressionLevel: 9 });
+    const output = await image.toBuffer();
+    const base = String(body.name || 'imagem').replace(/[^a-z0-9_-]+/gi, '_').replace(/\.[^.]+$/, '') || 'imagem';
+    res.set('Content-Type', format === 'jpg' ? 'image/jpeg' : `image/${format}`).set('Content-Disposition', `attachment; filename="${base}-upscaled.${format}"`).send(output);
+  } catch (err) {
+    res.status(400).json({ error: err.message || String(err) });
+  }
+});
+
 app.get('/api/outline/:id', (req, res) => {
   const job = jobs.get(req.params.id);
   if (!job) return res.status(404).json({ error: 'Resultado expirado.' });

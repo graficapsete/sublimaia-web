@@ -31,7 +31,8 @@ body {
 [hidden] { display: none !important; }
 .muted { color: var(--muted); }
 
-.app { display: grid; grid-template-rows: 48px 1fr; height: 100vh; }
+.app { display: flex; flex-direction: column; height: 100vh; }
+.app > main, .app > .upscale-app { flex: 1; min-height: 0; }
 
 /* ------------------------------------------------------------- topbar --- */
 .topbar {
@@ -209,6 +210,21 @@ input[type="range"]:disabled { opacity: 0.4; cursor: default; }
 .stats dd { margin: 0; font-weight: 600; }
 
 .hint { margin: -4px 0 0; color: var(--muted); font-size: 12px; min-height: 2.9em; }
+
+/* --------------------------------------------------------------- tabs/upscale --- */
+.tab-switcher { display: flex; gap: 4px; margin-left: auto; }
+.tab-btn { border: 1px solid transparent; border-radius: 7px; padding: 7px 11px; background: transparent; color: var(--muted); cursor: pointer; font: inherit; }
+.tab-btn:hover, .tab-btn.active { color: var(--text); background: var(--accent-soft); border-color: var(--line); }
+.upscale-app { min-height: 0; flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 340px; background: var(--bg); }
+.upscale-preview { position: relative; min-height: 0; display: grid; place-items: center; padding: 28px; overflow: auto; }
+.upscale-preview-wrap { display: grid; gap: 10px; place-items: center; max-width: 100%; max-height: 100%; }
+.upscale-preview-wrap img { max-width: 100%; max-height: calc(100vh - 150px); object-fit: contain; border: 1px solid var(--line); box-shadow: 0 14px 42px rgba(0,0,0,.25); }
+.upscale-sidebar { background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto; }
+.upscale-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.upscale-grid label { display: grid; gap: 6px; color: var(--muted); font-size: 12px; }
+.upscale-grid input[type="number"] { width: 100%; box-sizing: border-box; }
+input[type="number"] { height: 32px; padding: 0 8px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel-2); color: var(--text); }
+@media (max-width: 820px) { .upscale-app { grid-template-columns: 1fr; grid-template-rows: minmax(300px, 1fr) auto; } .upscale-sidebar { border-left: 0; border-top: 1px solid var(--line); } .tab-switcher { margin-left: 8px; } }
 
 /* ----------------------------------------------------------------- toast --- */
 .toast {
