@@ -4,10 +4,12 @@ const sharp = require('sharp');
 const crypto = require('crypto');
 const { runPipeline } = require('./src/lib/pipeline');
 const { exportModel } = require('./src/lib/exporters');
+const { processHalftone } = require('./src/halftone');
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
 const jobs = new Map();
+app.use('/api/halftone', express.json({ limit: '17mb' }));
 app.use(express.json({ limit: '70mb' }));
 app.use(express.static('public'));
 
@@ -118,6 +120,18 @@ app.post('/api/remove-background', async (req, res) => {
   }
 });
 
+app.post('/api/halftone', async (req, res) => {
+  try {
+    const result = await processHalftone(req.body || {});
+    const base = String(req.body.name || 'arte').replace(/\.[^.]+$/, '').replace(/[^a-z0-9_-]+/gi, '_').slice(0, 80) || 'arte';
+    res.set('Content-Type', 'image/png').set('X-Image-Width', String(result.width)).set('X-Image-Height', String(result.height)).set('X-Image-DPI', String(result.dpi));
+    if (!result.preview) res.set('Content-Disposition', `attachment; filename="${base}-halftone-dtf.png"`);
+    res.send(result.png);
+  } catch (err) {
+    res.status(err.status || 400).json({ error: err.message || String(err), code: err.code || 'PROCESSING_ERROR' });
+  }
+});
+
 app.get('/api/outline/:id', (req, res) => {
   const job = jobs.get(req.params.id);
   if (!job) return res.status(404).json({ error: 'Resultado expirado.' });
@@ -135,4 +149,8 @@ app.post('/api/export/:id', express.json({ limit: '20mb' }), (req, res) => {
 });
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
+app.use((err, req, res, next) => {
+  if (req.path === '/api/halftone' && err.type === 'entity.too.large') return res.status(413).json({ error: 'O arquivo excede 12 MB. Reduza a arte antes de enviar.', code: 'INPUT_TOO_LARGE' });
+  next(err);
+});
 app.listen(port, '0.0.0.0', () => console.log(`SublimaIa web listening on ${port}`));

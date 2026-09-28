@@ -12,7 +12,7 @@
     const modeButtons = root.querySelectorAll('[data-mode]');
     let originalUrl = null, resultUrl = null;
     function render() {
-      const pct = Number(range.value); clip.style.width = pct + '%'; divider.style.left = pct + '%';
+      const pct = Number(range.value); clip.style.clipPath = `inset(0 ${100 - pct}% 0 0)`; divider.style.left = pct + '%';
       stage.classList.toggle('overlay-mode', stage.dataset.mode === 'overlay');
       root.querySelector('.compare-range').hidden = stage.dataset.mode !== 'overlay';
     }

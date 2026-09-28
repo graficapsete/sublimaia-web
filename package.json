@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "commonjs",
-  "scripts": { "start": "node server.js" },
+  "scripts": { "start": "node server.js", "test": "node --test test/*.test.js" },
   "dependencies": {
     "express": "^5.1.0",
     "sharp": "^0.35.4"
