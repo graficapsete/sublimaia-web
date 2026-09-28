@@ -66,8 +66,8 @@
 
   const PRESETS = {
     lowq: {
-      mode: 'color', colors: 10, upscale: 4, denoise: 2, sharpen: 30, autoContrast: true,
-      threshold: -1, detail: 8, smooth: 60, removeBg: false, antiGap: true,
+      mode: 'color', colors: 12, upscale: 4, denoise: 1, sharpen: 10, autoContrast: false,
+      threshold: -1, detail: 2, smooth: 25, removeBg: false, antiGap: true,
     },
     logo: {
       mode: 'color', colors: 12, upscale: 4, denoise: 0, sharpen: 0, autoContrast: false,
@@ -177,6 +177,12 @@
     };
   }
 
+  function updateQualityAdvice() {
+    const p = readParams();
+    const risky = (p.denoise === 2 && p.detail >= 5 && p.smooth >= 45) || (p.detail >= 8 && p.smooth >= 55);
+    $('#quality-advice').hidden = !risky;
+  }
+
   function applyParams(p) {
     for (const key of PARAM_KEYS) {
       if (key === 'autoThreshold') setValue('autoThreshold', p.threshold < 0);
@@ -196,6 +202,7 @@
   function onParamChange() {
     el.preset.value = 'custom';
     updateVisibility();
+    updateQualityAdvice();
     scheduleAuto();
   }
 
@@ -233,6 +240,13 @@
     const p = PRESETS[el.preset.value];
     if (!p) return;
     applyParams(p);
+    updateQualityAdvice();
+    scheduleAuto();
+  });
+  $('#quality-advice-apply').addEventListener('click', () => {
+    applyParams({ ...readParams(), denoise: 0, sharpen: 0, detail: 1, smooth: 25 });
+    el.preset.value = 'custom';
+    updateQualityAdvice();
     scheduleAuto();
   });
   el.auto.addEventListener('change', () => {
@@ -724,6 +738,7 @@
   // -------------------------------------------------------------- iniciar ---
   el.preset.value = DEFAULT_PRESET;
   applyParams(PRESETS[DEFAULT_PRESET]);
+  updateQualityAdvice();
   setFormat('svg');
   updateExportState();
 })();

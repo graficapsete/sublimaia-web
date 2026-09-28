@@ -210,6 +210,9 @@ input[type="range"]:disabled { opacity: 0.4; cursor: default; }
 .stats dd { margin: 0; font-weight: 600; }
 
 .hint { margin: -4px 0 0; color: var(--muted); font-size: 12px; min-height: 2.9em; }
+.quality-advice { margin-top: 10px; padding: 10px; border: 1px solid rgba(255, 190, 90, .35); border-radius: var(--radius); background: rgba(255, 190, 90, .08); }
+.quality-advice p { margin: 0 0 8px; color: var(--text); font-size: 12px; line-height: 1.45; }
+.quality-advice .btn { min-height: 32px; padding: 6px 9px; font-size: 12px; }
 
 /* --------------------------------------------------------------- tabs/upscale --- */
 .tab-switcher { display: flex; gap: 4px; margin-left: auto; }
