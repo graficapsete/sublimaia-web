@@ -74,7 +74,7 @@ function traceTwoTone(img, palette, p, ctx) {
   for (let i = 0; i < field.length; i++) {
     const o = i * 4;
     if (d[o + 3] < 255) return null;
-    field[i] = Math.max(-1, Math.min(1, 2 * ((d[o] - a[0]) * vx + (d[o + 1] - a[1]) * vy + (d[o + 2] - a[2]) * vz) / length2 - 0.92));
+    field[i] = Math.max(-1, Math.min(1, 2 * ((d[o] - a[0]) * vx + (d[o + 1] - a[1]) * vy + (d[o + 2] - a[2]) * vz) / length2 - 1 + p.strokeBalance / 100));
     if (Math.abs(field[i]) < 0.8) mixed++;
   }
   // Menos de um pixel: tira ruído de compressão sem fechar os contra-formas.

@@ -157,6 +157,12 @@
           <input type="range" id="p-smooth" min="0" max="100" step="5">
         </div>
 
+        <div class="row" id="row-strokeBalance">
+          <div class="row-head"><label for="p-strokeBalance" data-i18n="p.strokeBalance">Espessura dos traços finos</label><output id="o-strokeBalance"></output></div>
+          <input type="range" id="p-strokeBalance" min="-20" max="30" step="1">
+          <p class="hint" data-i18n="p.strokeBalanceHint">Para logos JPEG de duas cores. Aumente se letras finas estiverem falhando; diminua se estiverem grossas.</p>
+        </div>
+
         <label class="check"><input type="checkbox" id="p-removeBg"><span data-i18n="p.removeBg">Remover fundo (cor dos cantos)</span></label>
         <label class="check"><input type="checkbox" id="p-antiGap"><span data-i18n="p.antiGap">Evitar frestas entre as cores</span></label>
         <div id="quality-advice" class="quality-advice" role="note" hidden>

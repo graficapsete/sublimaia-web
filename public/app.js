@@ -67,29 +67,29 @@
   const PRESETS = {
     lowq: {
       mode: 'color', colors: 12, upscale: 4, denoise: 1, sharpen: 10, autoContrast: false,
-      threshold: -1, detail: 2, smooth: 25, removeBg: false, antiGap: true,
+      threshold: -1, detail: 2, smooth: 25, strokeBalance: 8, removeBg: false, antiGap: true,
     },
     logo: {
       mode: 'color', colors: 12, upscale: 4, denoise: 0, sharpen: 0, autoContrast: false,
-      threshold: -1, detail: 1, smooth: 25, removeBg: false, antiGap: false,
+      threshold: -1, detail: 1, smooth: 25, strokeBalance: 8, removeBg: false, antiGap: false,
     },
     lineart: {
       mode: 'bw', colors: 2, upscale: 3, denoise: 0, sharpen: 0, autoContrast: true,
-      threshold: -1, detail: 1, smooth: 25, removeBg: true, antiGap: false,
+      threshold: -1, detail: 1, smooth: 25, strokeBalance: 8, removeBg: true, antiGap: false,
     },
     gray: {
       mode: 'gray', colors: 8, upscale: 2, denoise: 1, sharpen: 10, autoContrast: true,
-      threshold: -1, detail: 6, smooth: 40, removeBg: false, antiGap: true,
+      threshold: -1, detail: 6, smooth: 40, strokeBalance: 8, removeBg: false, antiGap: true,
     },
     photo: {
       mode: 'color', colors: 32, upscale: 1, denoise: 1, sharpen: 0, autoContrast: false,
-      threshold: -1, detail: 10, smooth: 30, removeBg: false, antiGap: true,
+      threshold: -1, detail: 10, smooth: 30, strokeBalance: 8, removeBg: false, antiGap: true,
     },
   };
 
   const PARAM_KEYS = [
     'upscale', 'denoise', 'sharpen', 'autoContrast', 'mode', 'colors',
-    'autoThreshold', 'threshold', 'detail', 'smooth', 'removeBg', 'antiGap',
+    'autoThreshold', 'threshold', 'detail', 'smooth', 'strokeBalance', 'removeBg', 'antiGap',
   ];
 
   const FORMAT_LABEL = { svg: 'SVG', pdf: 'PDF', eps: 'EPS', dxf: 'DXF', png: 'PNG' };
@@ -133,6 +133,7 @@
       case 'denoise': return t('denoise.' + v) === 'denoise.' + v ? String(v) : t('denoise.' + v);
       case 'sharpen': return v + '%';
       case 'detail': return v + ' px';
+      case 'strokeBalance': return (v > 0 ? '+' : '') + v + '%';
       case 'threshold': return String(v);
       default: return String(v);
     }
@@ -172,6 +173,7 @@
       threshold: getValue('autoThreshold') ? -1 : getValue('threshold'),
       detail: getValue('detail'),
       smooth: getValue('smooth'),
+      strokeBalance: getValue('strokeBalance'),
       removeBg: getValue('removeBg'),
       antiGap: getValue('antiGap'),
     };
@@ -196,6 +198,7 @@
     const bw = getValue('mode') === 'bw';
     $('#row-colors').hidden = bw;
     $('#row-threshold').hidden = !bw;
+    $('#row-strokeBalance').hidden = getValue('mode') !== 'color';
     ctl('threshold').disabled = getValue('autoThreshold');
   }
 

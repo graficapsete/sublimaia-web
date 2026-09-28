@@ -17,6 +17,7 @@ const DEFAULTS = {
   threshold: -1, // P&B: -1 = automático (Otsu) ou 0..255
   detail: 4, // ignora manchas menores que N px (na imagem original)
   smooth: 40, // 0..100 suavidade das curvas
+  strokeBalance: 8, // -20..30: espessura de detalhes em logos JPEG de duas cores
   removeBg: false,
   antiGap: true,
 };
@@ -39,6 +40,7 @@ function normalizeParams(input = {}) {
   o.threshold = t >= 0 && t <= 255 ? Math.round(t) : -1;
   o.detail = clamp(num(o.detail, 4), 0, 50);
   o.smooth = clamp(num(o.smooth, 40), 0, 100);
+  o.strokeBalance = clamp(num(o.strokeBalance, 8), -20, 30);
   o.autoContrast = !!o.autoContrast;
   o.removeBg = !!o.removeBg;
   o.antiGap = !!o.antiGap;

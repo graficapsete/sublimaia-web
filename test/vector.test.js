@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const sharp = require('sharp');
-const { runPipeline } = require('../src/lib/pipeline');
+const { runPipeline, normalizeParams } = require('../src/lib/pipeline');
 const { samplePixels } = require('../src/lib/color');
 const { exportModel } = require('../src/lib/exporters');
 
@@ -80,6 +80,27 @@ test('logo JPEG de duas tintas mantém texto fino sem curvas explosivas', async 
       previous = seg.slice(-2);
     }
   }
+});
+
+test('controle de espessura preserva configuração e altera somente a cobertura de logos de duas tintas', async () => {
+  assert.equal(normalizeParams({ strokeBalance: 99 }).strokeBalance, 30);
+  assert.equal(normalizeParams({ strokeBalance: -99 }).strokeBalance, -20);
+  const source = image(96, 48, (x, y) => x >= 10 && x < 80 && y >= 22 && y < 24
+    ? [235, 245, 220] : [100, 120, 103]);
+  const jpeg = await sharp(Buffer.from(source.data), { raw: { width: 96, height: 48, channels: 4 } }).jpeg({ quality: 65 }).toBuffer();
+  const data = await sharp(jpeg).ensureAlpha().raw().toBuffer();
+  const thin = runPipeline({ width: 96, height: 48, data, params: { ...LOGO, strokeBalance: -20 } });
+  const thick = runPipeline({ width: 96, height: 48, data, params: { ...LOGO, strokeBalance: 30 } });
+  const a = await render(thin.model), b = await render(thick.model);
+  const count = pixels => {
+    let n = 0;
+    for (let y = 16; y < 30; y++) for (let x = 6; x < 84; x++) {
+      if (pixels[(y * 96 + x) * 4] > 170) n++;
+    }
+    return n;
+  };
+  assert.ok(count(b) > count(a), 'valor positivo deve recuperar cobertura em traços finos');
+  assert.deepEqual(thin.model.palette, thick.model.palette);
 });
 
 test('furo, canto e borda transparente permanecem transparentes', async () => {
