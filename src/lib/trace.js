@@ -36,7 +36,7 @@ function modelStats(model) {
 function smoothing(p, factor) {
   const s = p.smooth / 100;
   return {
-    sigma: Math.max(0.9, (0.1 + 0.2 * s) * factor), // borrão dos campos (px de trabalho)
+    sigma: Math.max(0.3, (0.1 + 0.2 * s) * factor), // em 1×, não diluir linhas de um pixel
     tol: Math.max(0.45, (0.1 + 0.4 * s) * factor), // erro máx. do ajuste de curva (px de trabalho)
     arcSigma: Math.max(1, (0.3 + 1.2 * s) * factor), // alisamento do contorno ao longo do arco
     cornerAngle: ((48 + 22 * s) * Math.PI) / 180, // ângulo de virada para considerar canto
@@ -67,7 +67,7 @@ function traceImage(img, p, ctx, progress = () => {}) {
   progress('colors', 0);
   const palette = p.mode === 'bw'
     ? fixedPalette([[0, 0, 0], [255, 255, 255]])
-    : extractPalette(img, p.colors);
+    : ctx.palette || extractPalette(img, p.colors, { protectRare: p.detail <= 2 });
   const K = palette.length;
   const T = K; // rótulo "transparente"
   if (K === 0) return { width: ctx.outWidth, height: ctx.outHeight, stroke: 0, shapes: [], palette: [] };
@@ -95,7 +95,7 @@ function traceImage(img, p, ctx, progress = () => {}) {
   const order = present.filter((k) => !skip.has(k)).sort((a, b) => bounds.area[b] - bounds.area[a]);
 
   const shapes = [];
-  const stroke = p.antiGap ? Math.round(Math.min(0.5, 0.9 / factor + 0.15) * 100) / 100 : 0;
+  const stroke = p.antiGap ? Math.round(Math.min(0.25, 0.45 / factor) * 100) / 100 : 0;
 
   // com "evitar frestas" e sem transparência, a cor dominante vira um retângulo de fundo
   let rectLabel = -1;

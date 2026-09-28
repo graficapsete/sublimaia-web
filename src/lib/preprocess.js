@@ -21,9 +21,8 @@ function cloneImage(img) {
 
 /**
  * Trata transparência.
- *  - modos 'gray'/'bw': achata sobre fundo branco.
- *  - modo 'color': mantém alfa binário (>=128 opaco) e preenche o RGB dos pixels
- *    transparentes com a cor média, para não sujar as bordas ao filtrar/ampliar.
+ * Mantém o alfa em todos os modos. Cores de pixels transparentes recebem a
+ * cor do pixel opaco mais próximo, para não criar halos durante a ampliação.
  * Retorna true se o resultado ainda tem transparência.
  */
 function prepareAlpha(img, mode) {
@@ -37,46 +36,43 @@ function prepareAlpha(img, mode) {
   }
   if (!hasTransparency) return false;
 
-  if (mode !== 'color') {
-    for (let i = 0; i < d.length; i += 4) {
-      const a = d[i + 3];
-      if (a < 255) {
-        const inv = 255 - a;
-        d[i] = (d[i] * a + 255 * inv) / 255;
-        d[i + 1] = (d[i + 1] * a + 255 * inv) / 255;
-        d[i + 2] = (d[i + 2] * a + 255 * inv) / 255;
-        d[i + 3] = 255;
-      }
-    }
-    return false;
+  const w = img.width, h = img.height, N = w * h;
+  const queue = new Int32Array(N);
+  const seen = new Uint8Array(N);
+  let head = 0, tail = 0, anyOpaque = false;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const at = y * w + x, p = at * 4;
+    const opaque = d[p + 3] >= 128;
+    d[p + 3] = opaque ? 255 : 0;
+    if (!opaque) continue;
+    anyOpaque = true;
+    const edge = (x > 0 && d[p - 1] < 128) || (x + 1 < w && d[p + 7] < 128) ||
+      (y > 0 && d[p - w * 4 + 3] < 128) || (y + 1 < h && d[p + w * 4 + 3] < 128);
+    if (edge) { queue[tail++] = at; seen[at] = 1; }
   }
-
-  let sr = 0, sg = 0, sb = 0, n = 0;
-  for (let i = 0; i < d.length; i += 4) {
-    if (d[i + 3] >= 128) {
-      sr += d[i];
-      sg += d[i + 1];
-      sb += d[i + 2];
-      n++;
-      d[i + 3] = 255;
-    } else {
-      d[i + 3] = 0;
-    }
-  }
-  if (n === 0) {
+  if (!anyOpaque) {
     const e = new Error('A imagem é totalmente transparente.');
     e.code = 'FULLY_TRANSPARENT';
     throw e;
   }
-  const mr = Math.round(sr / n), mg = Math.round(sg / n), mb = Math.round(sb / n);
-  for (let i = 0; i < d.length; i += 4) {
-    if (d[i + 3] === 0) {
-      d[i] = mr;
-      d[i + 1] = mg;
-      d[i + 2] = mb;
+  const neighbors = new Int32Array(4);
+  while (head < tail) {
+    const at = queue[head++], x = at % w, p = at * 4;
+    neighbors[0] = x > 0 ? at - 1 : -1;
+    neighbors[1] = x + 1 < w ? at + 1 : -1;
+    neighbors[2] = at >= w ? at - w : -1;
+    neighbors[3] = at + w < N ? at + w : -1;
+    for (const to of neighbors) {
+      if (to < 0 || seen[to]) continue;
+      seen[to] = 1;
+      const q = to * 4;
+      if (d[q + 3] === 0) {
+        d[q] = d[p]; d[q + 1] = d[p + 1]; d[q + 2] = d[p + 2];
+        queue[tail++] = to;
+      }
     }
   }
-  return true;
+  return tail > 0;
 }
 
 /** Após ampliar, o alfa fica com valores intermediários: volta a binário. */
@@ -104,7 +100,6 @@ function medianFilter(img, radius, grayOnly = false) {
   const out = new Uint8ClampedArray(data.length);
   const size = 2 * radius + 1;
   const n = size * size;
-  const mid = n >> 1;
   const buf = new Uint8Array(n);
   const channels = grayOnly ? 1 : 3;
 
@@ -117,7 +112,11 @@ function medianFilter(img, radius, grayOnly = false) {
           const yy = clamp(y + dy, 0, h - 1);
           for (let dx = -radius; dx <= radius; dx++) {
             const xx = clamp(x + dx, 0, w - 1);
-            const v = data[(yy * w + xx) * 4 + c];
+            const q = (yy * w + xx) * 4;
+            if ((data[q + 3] >= 128) !== (data[p + 3] >= 128)) continue;
+            const distance = Math.max(Math.abs(data[q] - data[p]), Math.abs(data[q + 1] - data[p + 1]), Math.abs(data[q + 2] - data[p + 2]));
+            if (distance > (radius === 1 ? 40 : 65)) continue;
+            const v = data[q + c];
             // inserção ordenada
             let j = k++;
             while (j > 0 && buf[j - 1] > v) {
@@ -127,7 +126,7 @@ function medianFilter(img, radius, grayOnly = false) {
             buf[j] = v;
           }
         }
-        out[p + c] = buf[mid];
+        out[p + c] = k >= Math.ceil(n / 3) ? buf[k >> 1] : data[p + c];
       }
       if (grayOnly) out[p + 1] = out[p + 2] = out[p];
       out[p + 3] = data[p + 3];
@@ -322,6 +321,7 @@ function otsu(img) {
   const hist = new Uint32Array(256);
   let total = 0;
   for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] < 128) continue;
     hist[Math.round(d[i])]++;
     total++;
   }
@@ -351,7 +351,6 @@ function applyThreshold(img, t) {
   for (let i = 0; i < d.length; i += 4) {
     const v = d[i] > t ? 255 : 0;
     d[i] = d[i + 1] = d[i + 2] = v;
-    d[i + 3] = 255;
   }
 }
 

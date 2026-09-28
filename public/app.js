@@ -1,6 +1,7 @@
 'use strict';
 (() => {
   let currentJobId = null;
+  let activeVectorRequest = null;
   const bytesToBase64 = (bytes) => {
     let binary = '';
     const chunk = 0x8000;
@@ -14,15 +15,33 @@
   };
   const api = {
     onProgress: () => () => {},
-    cancel: async () => true,
+    cancel: async () => { if (activeVectorRequest) activeVectorRequest.abort(); return true; },
     openImage: () => new Promise((resolve) => {
       const input = document.createElement('input'); input.type = 'file'; input.accept = 'image/*';
       input.onchange = async () => { const file = input.files[0]; resolve(file ? { bytes: new Uint8Array(await file.arrayBuffer()), mime: file.type, name: file.name } : null); };
       input.click();
     }),
     vectorize: async (payload) => {
-      const r = await fetch('/api/vectorize', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...payload, data: bytesToBase64(payload.data) }) });
-      const result = await r.json(); currentJobId = result.id || null; return result;
+      if (activeVectorRequest) activeVectorRequest.abort();
+      const controller = new AbortController(); activeVectorRequest = controller;
+      const body = JSON.stringify({ ...payload, data: bytesToBase64(payload.data) });
+      try {
+        for (let attempt = 0; attempt < 20; attempt++) {
+          const r = await fetch('/api/vectorize', { method: 'POST', headers: { 'content-type': 'application/json' }, body, signal: controller.signal });
+          const result = await r.json();
+          if (r.status === 429 && attempt < 19) {
+            await new Promise((resolve, reject) => {
+              let timer;
+              const onAbort = () => { clearTimeout(timer); reject(new DOMException('Cancelado', 'AbortError')); };
+              if (controller.signal.aborted) return onAbort();
+              timer = setTimeout(() => { controller.signal.removeEventListener('abort', onAbort); resolve(); }, 500);
+              controller.signal.addEventListener('abort', onAbort, { once: true });
+            });
+            continue;
+          }
+          currentJobId = result.id || null; return result;
+        }
+      } finally { if (activeVectorRequest === controller) activeVectorRequest = null; }
     },
     outlineSvg: async () => currentJobId ? await (await fetch('/api/outline/' + currentJobId)).text() : null,
     exportAs: async ({ format, name, pngBytes }) => {
@@ -51,12 +70,12 @@
       threshold: -1, detail: 8, smooth: 60, removeBg: false, antiGap: true,
     },
     logo: {
-      mode: 'color', colors: 12, upscale: 4, denoise: 1, sharpen: 20, autoContrast: false,
-      threshold: -1, detail: 6, smooth: 55, removeBg: false, antiGap: true,
+      mode: 'color', colors: 12, upscale: 4, denoise: 0, sharpen: 0, autoContrast: false,
+      threshold: -1, detail: 1, smooth: 25, removeBg: false, antiGap: false,
     },
     lineart: {
-      mode: 'bw', colors: 2, upscale: 3, denoise: 1, sharpen: 0, autoContrast: true,
-      threshold: -1, detail: 6, smooth: 50, removeBg: true, antiGap: false,
+      mode: 'bw', colors: 2, upscale: 3, denoise: 0, sharpen: 0, autoContrast: true,
+      threshold: -1, detail: 1, smooth: 25, removeBg: true, antiGap: false,
     },
     gray: {
       mode: 'gray', colors: 8, upscale: 2, denoise: 1, sharpen: 10, autoContrast: true,
@@ -297,9 +316,12 @@
       return;
     }
 
-    let scale = 1;
-    if (ow * oh > MAX_INPUT_PIXELS) scale = Math.sqrt(MAX_INPUT_PIXELS / (ow * oh));
-    const cw = Math.max(1, Math.round(ow * scale)), ch = Math.max(1, Math.round(oh * scale));
+    if (ow * oh > MAX_INPUT_PIXELS) {
+      URL.revokeObjectURL(url);
+      toast(t('err.IMAGE_TOO_LARGE'), 'error');
+      return;
+    }
+    const cw = ow, ch = oh;
     const canvas = document.createElement('canvas');
     canvas.width = cw;
     canvas.height = ch;
@@ -315,7 +337,7 @@
       baseName: name.replace(/\.[^.]+$/, '') || t('name.default'),
       width: ow,
       height: oh,
-      reduced: scale < 1,
+      reduced: false,
       imageData,
       url,
     };
@@ -418,7 +440,7 @@
         params: readParams(),
       });
     } catch (err) {
-      res = { ok: false, error: (err && err.message) || String(err) };
+      res = err && err.name === 'AbortError' ? { cancelled: true } : { ok: false, error: (err && err.message) || String(err) };
     }
     if (token !== state.token) return; // já existe um trabalho mais novo
     setBusy(false);

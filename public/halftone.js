@@ -4,6 +4,7 @@
   const app = $('halftone-app');
   const preview = app.querySelector('.halftone-preview');
   const compare = window.createComparison('halftone-compare');
+  const viewport = window.createImageViewport(preview);
   const state = { file: null, data: null, url: null, width: 0, height: 0, generation: 0, timer: null, finalBlob: null, working: false };
   const status = $('halftone-status');
   const input = $('halftone-file');
@@ -68,7 +69,7 @@
       const data = await encode(file);
       if (state.url) URL.revokeObjectURL(state.url);
       Object.assign(state, { file, data, url, width: image.naturalWidth, height: image.naturalHeight });
-      compare.reset(); compare.setOriginal(url);
+      compare.reset(); compare.setOriginal(url); viewport.setEnabled(true); viewport.reset();
       $('halftone-original-image').src = url;
       $('halftone-file-info').textContent = `${file.name} · ${state.width} × ${state.height} px`;
       $('halftone-empty').hidden = true; $('halftone-original').hidden = false;
@@ -89,7 +90,7 @@
     try {
       const blob = await send({ ...values(), preview: true });
       if (generation !== state.generation) return;
-      compare.setResult(blob); $('halftone-original').hidden = true;
+      compare.setResult(blob); $('halftone-original').hidden = true; viewport.refresh();
       status.textContent = 'Prévia aproximada. Gere o PNG para conferir a resolução final.';
     } catch (err) {
       if (generation !== state.generation) return;
@@ -107,7 +108,7 @@
         try { blob = await send({ ...values(), preview: false }); break; }
         catch (err) { if (err.code !== 'BUSY' || attempt === 19) throw err; await new Promise(resolve => setTimeout(resolve, 1000)); }
       }
-      state.finalBlob = blob; compare.setResult(blob); $('halftone-original').hidden = true;
+      state.finalBlob = blob; compare.setResult(blob); $('halftone-original').hidden = true; viewport.refresh();
       $('halftone-download').disabled = false;
       status.textContent = 'PNG transparente pronto. Confira a comparação e baixe o arquivo.';
     } catch (err) { status.textContent = err.message; }

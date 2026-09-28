@@ -4,6 +4,7 @@
  * Roda dentro de um worker_thread (ver worker.js) para não travar a interface.
  */
 const P = require('./preprocess');
+const { extractPalette } = require('./color');
 const { traceImage, modelStats } = require('./trace');
 
 const DEFAULTS = {
@@ -75,6 +76,9 @@ function runPipeline(job, progress = () => {}) {
     P.autoLevels(img);
   }
 
+  // Não aprender cores artificiais que o Lanczos gera entre duas tintas chapadas.
+  const sourcePalette = p.mode === 'bw' ? null : extractPalette(img, p.colors, { protectRare: p.detail <= 2 });
+
   const size = P.computeWorkSize(img.width, img.height, p.upscale, MAX_WORK_PIXELS);
   if (size.width !== img.width || size.height !== img.height) {
     progress('resize', 35, { w: size.width, h: size.height });
@@ -94,7 +98,7 @@ function runPipeline(job, progress = () => {}) {
   }
 
   progress('trace', 55);
-  const model = traceImage(img, p, { factor: size.factor, outWidth, outHeight }, (stage, pct) =>
+  const model = traceImage(img, p, { factor: size.factor, outWidth, outHeight, palette: sourcePalette }, (stage, pct) =>
     progress(stage, 55 + Math.round((pct / 100) * 40))
   );
 

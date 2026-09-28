@@ -2,13 +2,16 @@
 const express = require('express');
 const sharp = require('sharp');
 const crypto = require('crypto');
-const { runPipeline } = require('./src/lib/pipeline');
+const { Worker } = require('worker_threads');
+const path = require('path');
 const { exportModel } = require('./src/lib/exporters');
 const { processHalftone } = require('./src/halftone');
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
 const jobs = new Map();
+let vectorBusy = false;
+app.use('/api/vectorize', express.json({ limit: '46mb' }));
 app.use('/api/halftone', express.json({ limit: '17mb' }));
 app.use(express.json({ limit: '70mb' }));
 app.use(express.static('public'));
@@ -18,21 +21,49 @@ function remember(model) {
   const id = crypto.randomUUID();
   jobs.set(id, { model, created: Date.now() });
   for (const [key, value] of jobs) if (Date.now() - value.created > 30 * 60 * 1000) jobs.delete(key);
+  while (jobs.size > 10) jobs.delete(jobs.keys().next().value);
   return id;
 }
 
+function vectorJob(payload, res) {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(path.join(__dirname, 'src/vector-worker.js'), { workerData: payload, transferList: [payload.data], resourceLimits: { maxOldGenerationSizeMb: 512 } });
+    let done = false, stopping = false;
+    const finish = (error, result) => {
+      if (done) return;
+      done = true; clearTimeout(timer); res.off('close', disconnect);
+      if (error) reject(error); else resolve(result);
+    };
+    const disconnect = () => { if (!res.writableEnded && !stopping) { stopping = true; worker.terminate().finally(() => finish(Object.assign(new Error('Requisição cancelada.'), { code: 'CANCELLED' }))); } };
+    const timer = setTimeout(() => { if (stopping) return; stopping = true; worker.terminate().finally(() => finish(Object.assign(new Error('O processamento demorou demais. Reduza a imagem ou o número de cores.'), { code: 'TIMEOUT', status: 503 }))); }, 90000);
+    res.on('close', disconnect);
+    worker.once('message', result => {
+      if (result.error) finish(Object.assign(new Error(result.error), { code: result.errorCode }));
+      else finish(null, result);
+    });
+    worker.once('error', error => finish(error));
+    worker.once('exit', code => { if (code !== 0 && !stopping) finish(new Error('Vetorização interrompida.')); });
+  });
+}
+
 app.post('/api/vectorize', async (req, res) => {
+  if (vectorBusy) return res.status(429).json({ ok: false, error: 'Há outra vetorização em andamento. Aguarde alguns segundos.', errorCode: 'BUSY' });
+  vectorBusy = true;
   try {
     const { width, height, origWidth, origHeight, data, params } = req.body || {};
+    if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || width * height > 8000000) {
+      return res.status(413).json({ ok: false, error: 'A imagem ultrapassa o limite de 8 milhões de pixels.', errorCode: 'IMAGE_TOO_LARGE' });
+    }
+    if (typeof data !== 'string') throw new Error('Dados de imagem ausentes.');
     const rgba = decodeBase64(data);
-    const { data: pixels, info } = await sharp(rgba, { raw: { width, height, channels: 4 } })
-      .raw().toBuffer({ resolveWithObject: true });
-    const result = runPipeline({ width: info.width, height: info.height, data: new Uint8ClampedArray(pixels), origWidth, origHeight, params });
+    if (rgba.length !== width * height * 4) throw new Error('Dados RGBA inválidos para as dimensões informadas.');
+    const pixels = Uint8ClampedArray.from(rgba);
+    const result = await vectorJob({ width, height, origWidth, origHeight, data: pixels.buffer, params }, res);
     const id = remember(result.model);
-    res.json({ ok: true, id, svg: exportModel('svg', result.model), stats: result.stats });
+    if (!res.destroyed) res.json({ ok: true, id, svg: result.svg, stats: result.stats });
   } catch (err) {
-    res.status(400).json({ ok: false, error: err.message || String(err), errorCode: err.code });
-  }
+    if (!res.destroyed) res.status(err.status || 400).json({ ok: false, error: err.message || String(err), errorCode: err.code });
+  } finally { vectorBusy = false; }
 });
 
 app.post('/api/upscale', async (req, res) => {
@@ -150,7 +181,9 @@ app.post('/api/export/:id', express.json({ limit: '20mb' }), (req, res) => {
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
 app.use((err, req, res, next) => {
+  if (req.path === '/api/vectorize' && err.type === 'entity.too.large') return res.status(413).json({ ok: false, error: 'A imagem ultrapassa o limite de envio para vetorização.', errorCode: 'IMAGE_TOO_LARGE' });
   if (req.path === '/api/halftone' && err.type === 'entity.too.large') return res.status(413).json({ error: 'O arquivo excede 12 MB. Reduza a arte antes de enviar.', code: 'INPUT_TOO_LARGE' });
   next(err);
 });
-app.listen(port, '0.0.0.0', () => console.log(`SublimaIa web listening on ${port}`));
+if (require.main === module) app.listen(port, '0.0.0.0', () => console.log(`SublimaIa web listening on ${port}`));
+module.exports = { app };

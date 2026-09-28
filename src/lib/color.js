@@ -47,34 +47,42 @@ function mulberry32(a) {
 
 const dist3 = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 
-/** Amostra pixels opacos da imagem (Lab + RGB). Determinístico. */
-function samplePixels(img, maxSamples) {
-  const { width: w, height: h, data: d } = img;
-  const N = w * h;
-  let step = Math.max(1, Math.floor(N / maxSamples));
-  if (step > 1) step |= 1; // ímpar: evita alinhar com a largura
-  const cap = Math.ceil(N / step) + 1;
-  const lab = new Float32Array(cap * 3);
-  const rgb = new Uint8Array(cap * 3);
-  let n = 0;
-  for (let i = 0; i < N; i += step) {
-    const p = i * 4;
+/** Histograma de cores opacas em células RGB 5-bit; nenhuma faixa espacial é omitida. */
+function samplePixels(img) {
+  const d = img.data;
+  const counts = new Uint32Array(32768);
+  const sums = new Float64Array(32768 * 3);
+  let total = 0;
+  for (let p = 0; p < d.length; p += 4) {
     if (d[p + 3] < 128) continue;
-    rgb[n * 3] = d[p];
-    rgb[n * 3 + 1] = d[p + 1];
-    rgb[n * 3 + 2] = d[p + 2];
-    rgbToLab(d[p], d[p + 1], d[p + 2], lab, n * 3);
-    n++;
+    const cell = ((d[p] >> 3) << 10) | ((d[p + 1] >> 3) << 5) | (d[p + 2] >> 3);
+    counts[cell]++; total++;
+    const o = cell * 3;
+    sums[o] += d[p]; sums[o + 1] += d[p + 1]; sums[o + 2] += d[p + 2];
   }
-  return { n, lab, rgb };
+  const n = counts.reduce((a, b) => a + (b > 0), 0);
+  const lab = new Float32Array(n * 3), rgb = new Uint8Array(n * 3), weight = new Uint32Array(n);
+  let k = 0;
+  for (let cell = 0; cell < counts.length; cell++) {
+    if (!counts[cell]) continue;
+    const o = k * 3, s = cell * 3;
+    weight[k] = counts[cell];
+    rgb[o] = Math.round(sums[s] / counts[cell]);
+    rgb[o + 1] = Math.round(sums[s + 1] / counts[cell]);
+    rgb[o + 2] = Math.round(sums[s + 2] / counts[cell]);
+    rgbToLab(rgb[o], rgb[o + 1], rgb[o + 2], lab, o);
+    k++;
+  }
+  return { n, lab, rgb, weight, total };
 }
 
 /** k-means (k-means++ determinístico) em Lab. */
-function kmeans(lab, n, K, rng, iters = 10) {
+function kmeans(lab, n, K, rng, iters = 10, weight = null) {
   K = Math.max(1, Math.min(K, n));
   const cent = new Float64Array(K * 3);
   const minD = new Float64Array(n).fill(Infinity);
-  const first = Math.floor(rng() * n);
+  let draw = rng() * (weight ? weight.reduce((a, b) => a + b, 0) : n), first = n - 1;
+  for (let i = 0; i < n; i++) { draw -= weight ? weight[i] : 1; if (draw <= 0) { first = i; break; } }
   cent[0] = lab[first * 3];
   cent[1] = lab[first * 3 + 1];
   cent[2] = lab[first * 3 + 2];
@@ -86,12 +94,12 @@ function kmeans(lab, n, K, rng, iters = 10) {
       const a = lab[i * 3] - c0, b = lab[i * 3 + 1] - c1, c = lab[i * 3 + 2] - c2;
       const dd = a * a + b * b + c * c;
       if (dd < minD[i]) minD[i] = dd;
-      sum += minD[i];
+      sum += minD[i] * (weight ? weight[i] : 1);
     }
     if (sum <= 1e-9) break; // todos os pontos já coincidem com algum centro
     let r = rng() * sum, pick = n - 1;
     for (let i = 0; i < n; i++) {
-      r -= minD[i];
+      r -= minD[i] * (weight ? weight[i] : 1);
       if (r <= 0) {
         pick = i;
         break;
@@ -106,7 +114,7 @@ function kmeans(lab, n, K, rng, iters = 10) {
 
   const assign = new Uint8Array(n);
   const sums = new Float64Array(K * 3);
-  const cnt = new Int32Array(K);
+  const cnt = new Float64Array(K);
   for (let it = 0; it < iters; it++) {
     let changed = 0;
     sums.fill(0);
@@ -124,10 +132,11 @@ function kmeans(lab, n, K, rng, iters = 10) {
       }
       if (assign[i] !== best || it === 0) changed++;
       assign[i] = best;
-      sums[best * 3] += L;
-      sums[best * 3 + 1] += A;
-      sums[best * 3 + 2] += B;
-      cnt[best]++;
+      const mass = weight ? weight[i] : 1;
+      sums[best * 3] += L * mass;
+      sums[best * 3 + 1] += A * mass;
+      sums[best * 3 + 2] += B * mass;
+      cnt[best] += mass;
     }
     for (let k = 0; k < K; k++) {
       if (cnt[k] > 0) {
@@ -259,21 +268,22 @@ function prunePalette(entries, K, minShareN) {
  * @returns [{rgb:[r,g,b], lab:[L,a,b], share}]  (share = fração de pixels)
  */
 function extractPalette(img, K, opts = {}) {
-  const samples = samplePixels(img, opts.maxSamples || 160000);
+  const samples = samplePixels(img);
   if (samples.n === 0) return [];
   const rng = mulberry32(12345);
   // Centros extras: parte deles será "engolida" por cores de transição e descartada.
   const Kp = Math.min(64, K + 4 + Math.ceil(K / 2));
-  const km = kmeans(samples.lab, samples.n, Kp, rng, 10);
+  const km = kmeans(samples.lab, samples.n, Kp, rng, 10, samples.weight);
 
   const sums = new Float64Array(km.K * 3);
-  const cnt = new Int32Array(km.K);
+  const cnt = new Float64Array(km.K);
   for (let i = 0; i < samples.n; i++) {
     const k = km.assign[i];
-    sums[k * 3] += samples.rgb[i * 3];
-    sums[k * 3 + 1] += samples.rgb[i * 3 + 1];
-    sums[k * 3 + 2] += samples.rgb[i * 3 + 2];
-    cnt[k]++;
+    const mass = samples.weight[i];
+    sums[k * 3] += samples.rgb[i * 3] * mass;
+    sums[k * 3 + 1] += samples.rgb[i * 3 + 1] * mass;
+    sums[k * 3 + 2] += samples.rgb[i * 3 + 2] * mass;
+    cnt[k] += mass;
   }
   const entries = [];
   for (let k = 0; k < km.K; k++) {
@@ -281,9 +291,9 @@ function extractPalette(img, K, opts = {}) {
     const rgb = snapRGB([0, 1, 2].map((c) => clampByte(sums[k * 3 + c] / cnt[k])));
     entries.push({ rgb, lab: labOf(rgb), n: cnt[k] });
   }
-  prunePalette(entries, K, Math.max(1, Math.round(samples.n * 0.0002)));
+  prunePalette(entries, K, opts.protectRare ? 0 : Math.max(1, Math.round(samples.total * 0.0002)));
   entries.sort((a, b) => b.n - a.n);
-  return entries.map((e) => ({ rgb: e.rgb, lab: e.lab, share: e.n / samples.n }));
+  return entries.map((e) => ({ rgb: e.rgb, lab: e.lab, share: e.n / samples.total }));
 }
 
 /** Paleta fixa (modo P&B). */
