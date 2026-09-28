@@ -74,6 +74,14 @@ function generateBezier(d, first, last, u, t1, t2) {
     ar = (c00 * x1 - c01 * x0) / det;
   }
   if (!(al > eps) || !(ar > eps)) al = ar = segLen / 3;
+  // Em glifos pequenos, uma matriz quase singular pode produzir alças centenas
+  // de vezes maiores que a própria curva. O erro nos pontos amostrados pode
+  // ainda parecer baixo, mas a Bézier desenha diagonais pelo canvas inteiro.
+  let arcLen = 0;
+  for (let i = first + 1; i <= last; i++) arcLen += len(sub(d[i], d[i - 1]));
+  const maxHandle = Math.max(segLen / 3, arcLen / 2);
+  al = Math.min(al, maxHandle);
+  ar = Math.min(ar, maxHandle);
   return [p0, [p0[0] + t1[0] * al, p0[1] + t1[1] * al], [p3[0] + t2[0] * ar, p3[1] + t2[1] * ar], p3];
 }
 

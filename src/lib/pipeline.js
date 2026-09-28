@@ -5,7 +5,7 @@
  */
 const P = require('./preprocess');
 const { extractPalette } = require('./color');
-const { traceImage, modelStats } = require('./trace');
+const { traceImage, traceTwoTone, modelStats } = require('./trace');
 
 const DEFAULTS = {
   mode: 'color', // 'color' | 'gray' | 'bw'
@@ -78,6 +78,23 @@ function runPipeline(job, progress = () => {}) {
 
   // Não aprender cores artificiais que o Lanczos gera entre duas tintas chapadas.
   const sourcePalette = p.mode === 'bw' ? null : extractPalette(img, p.colors, { protectRare: p.detail <= 2 });
+
+  // Em JPEGs de duas tintas, o k-means às vezes devolve uma terceira cor
+  // residual quase idêntica à tinta clara. Não confundir isso com um destaque
+  // pequeno de cor realmente diferente.
+  const twoTonePalette = sourcePalette && sourcePalette.length > 2
+    && sourcePalette.slice(2).every(c => c.share < 0.001 && sourcePalette.slice(0, 2).some(d =>
+      Math.hypot(c.lab[0] - d.lab[0], c.lab[1] - d.lab[1], c.lab[2] - d.lab[2]) < 18))
+    ? sourcePalette.slice(0, 2) : sourcePalette;
+  if (p.mode === 'color' && !hasAlpha && twoTonePalette.length === 2) {
+    progress('trace', 55);
+    const model = traceTwoTone(img, twoTonePalette, p, { outWidth, outHeight });
+    if (model) {
+      progress('finalize', 95);
+      return { model, stats: { ...modelStats(model), colors: 2, ms: Date.now() - t0,
+        workWidth: img.width, workHeight: img.height, factor: 1 } };
+    }
+  }
 
   const size = P.computeWorkSize(img.width, img.height, p.upscale, MAX_WORK_PIXELS);
   if (size.width !== img.width || size.height !== img.height) {

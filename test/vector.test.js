@@ -52,6 +52,36 @@ test('amostragem não perde cor rara em coluna fora do passo periódico', async 
   assert.ok(at(pixels, 800, 1, 400)[1] < 40, 'a cor rara deve sobreviver no SVG, não só na paleta');
 });
 
+test('logo JPEG de duas tintas mantém texto fino sem curvas explosivas', async () => {
+  const source = image(240, 120, (x, y) => {
+    const stroke = (x >= 35 && x <= 190 && y >= 33 && y <= 36) ||
+      (x >= 35 && x <= 190 && y >= 43 && y <= 45) ||
+      (x >= 35 && x <= 38 && y >= 33 && y <= 45) ||
+      (x >= 187 && x <= 190 && y >= 33 && y <= 45);
+    return stroke ? [242, 252, 226] : [103, 124, 105];
+  });
+  const jpeg = await sharp(Buffer.from(source.data), { raw: { width: 240, height: 120, channels: 4 } }).jpeg({ quality: 72 }).toBuffer();
+  const pixels = await sharp(jpeg).ensureAlpha().raw().toBuffer();
+  const result = runPipeline({ width: 240, height: 120, data: pixels, params: { ...LOGO, denoise: 1 } });
+  assert.equal(result.stats.colors, 2);
+  assert.equal(result.stats.factor, 1, 'contorno deve aproveitar cobertura original do JPEG');
+  const output = await render(result.model);
+  assert.ok(at(output, 240, 100, 34)[0] > 180);
+  assert.ok(at(output, 240, 100, 39)[0] < 150, 'espaço interno deve permanecer aberto');
+  assert.ok(at(output, 240, 100, 44)[0] > 180);
+  for (const shape of result.model.shapes) for (const sp of shape.subpaths) {
+    let previous = sp.start;
+    for (const seg of sp.segs) {
+      if (seg[0] === 'C') {
+        const end = [seg[5], seg[6]];
+        assert.ok(Math.hypot(seg[1] - previous[0], seg[2] - previous[1]) < 240);
+        assert.ok(Math.hypot(seg[3] - end[0], seg[4] - end[1]) < 240);
+      }
+      previous = seg.slice(-2);
+    }
+  }
+});
+
 test('furo, canto e borda transparente permanecem transparentes', async () => {
   const source = image(64, 64, (x, y) => x >= 8 && x < 56 && y >= 8 && y < 56 && !(x >= 25 && x < 39 && y >= 25 && y < 39)
     ? [20, 80, 180, 255] : [0, 0, 0, 0]);

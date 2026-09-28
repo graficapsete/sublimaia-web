@@ -54,6 +54,64 @@ function polygonArea(loop) {
 }
 
 /**
+ * Em logos opacos de duas tintas, os pixels intermediários do JPEG são medidas
+ * da cobertura da borda, não uma terceira cor. Traçá-los como um campo contínuo
+ * evita deslocar letras finas para o centro do pixel e evita a propagação BFS
+ * das cores ambíguas através dos glifos.
+ */
+function traceTwoTone(img, palette, p, ctx) {
+  const W = img.width, H = img.height;
+  const bg = palette[0].share >= palette[1].share ? 0 : 1;
+  const fg = 1 - bg;
+  const a = palette[bg].rgb, b = palette[fg].rgb;
+  const vx = b[0] - a[0], vy = b[1] - a[1], vz = b[2] - a[2];
+  const length2 = vx * vx + vy * vy + vz * vz;
+  if (length2 < 900) return null;
+  const field = new Float32Array(W * H);
+  const tmp = new Float32Array(W * H);
+  const d = img.data;
+  let mixed = 0;
+  for (let i = 0; i < field.length; i++) {
+    const o = i * 4;
+    if (d[o + 3] < 255) return null;
+    field[i] = Math.max(-1, Math.min(1, 2 * ((d[o] - a[0]) * vx + (d[o + 1] - a[1]) * vy + (d[o + 2] - a[2]) * vz) / length2 - 0.92));
+    if (Math.abs(field[i]) < 0.8) mixed++;
+  }
+  // Menos de um pixel: tira ruído de compressão sem fechar os contra-formas.
+  // Bordas de duas cores realmente chapadas não precisam desse filtro: ele
+  // apagaria traços legítimos de um pixel e cores raras.
+  if (mixed > field.length / 200) {
+    const sigma = 0.4 + p.smooth / 500;
+    gaussBlur(field, tmp, W, H, boxesForGauss(sigma));
+  }
+  const loops = extractLoops(field, W, H);
+  const subpaths = [];
+  const minArea = p.detail > 0 ? Math.pow(p.detail / 2, 2) : 0;
+  for (const loop of loops) {
+    for (let i = 0; i < loop.length; i += 2) {
+      loop[i] = Math.max(0, Math.min(W, loop[i]));
+      loop[i + 1] = Math.max(0, Math.min(H, loop[i + 1]));
+    }
+    if (polygonArea(loop) < Math.max(1.5, minArea * 0.25)) continue;
+    const sp = fitClosedPath(loop, {
+      tol: 0.35 + p.smooth / 250,
+      arcSigma: 0.55 + p.smooth / 200,
+      cornerRound: 2,
+      cornerWindow: 4,
+      cornerAngle: Math.PI / 3,
+      sharpen: false,
+      scaleX: ctx.outWidth / W,
+      scaleY: ctx.outHeight / H,
+    });
+    if (sp && sp.segs.length >= 2) subpaths.push(sp);
+  }
+  const shapes = [];
+  if (!p.removeBg) shapes.push({ fill: a.slice(), subpaths: [{ start: [0, 0], segs: [['L', ctx.outWidth, 0], ['L', ctx.outWidth, ctx.outHeight], ['L', 0, ctx.outHeight]] }] });
+  if (subpaths.length) shapes.push({ fill: b.slice(), subpaths });
+  return { width: ctx.outWidth, height: ctx.outHeight, stroke: 0, shapes, palette: palette.map(c => c.rgb) };
+}
+
+/**
  * @param img     imagem de trabalho já tratada (RGBA)
  * @param p       parâmetros normalizados
  * @param ctx     { factor, outWidth, outHeight }
@@ -190,4 +248,4 @@ function traceImage(img, p, ctx, progress = () => {}) {
   };
 }
 
-module.exports = { traceImage, modelStats };
+module.exports = { traceImage, traceTwoTone, modelStats };
