@@ -103,6 +103,15 @@ test('controle de espessura preserva configuração e altera somente a cobertura
   assert.deepEqual(thin.model.palette, thick.model.palette);
 });
 
+test('degradê com limite de duas cores não ativa o traçado especial para logos', () => {
+  const source = image(128, 64, x => {
+    const value = Math.round(x * 255 / 127);
+    return [value, value, value];
+  });
+  const result = runPipeline({ ...source, params: { ...LOGO, colors: 2, upscale: 2 } });
+  assert.equal(result.stats.factor, 2, 'degradê deve seguir o fluxo geral de vetorização');
+});
+
 test('furo, canto e borda transparente permanecem transparentes', async () => {
   const source = image(64, 64, (x, y) => x >= 8 && x < 56 && y >= 8 && y < 56 && !(x >= 25 && x < 39 && y >= 25 && y < 39)
     ? [20, 80, 180, 255] : [0, 0, 0, 0]);

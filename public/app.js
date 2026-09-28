@@ -65,6 +65,10 @@
   const DEFAULT_PRESET = 'logo'; // logotipo / ilustração / desenho: o caso mais comum
 
   const PRESETS = {
+    fidelity: {
+      mode: 'color', colors: 12, upscale: 4, denoise: 1, sharpen: 10, autoContrast: false,
+      threshold: -1, detail: 2, smooth: 15, strokeBalance: 0, removeBg: false, antiGap: true,
+    },
     lowq: {
       mode: 'color', colors: 12, upscale: 4, denoise: 1, sharpen: 10, autoContrast: false,
       threshold: -1, detail: 2, smooth: 25, strokeBalance: 8, removeBg: false, antiGap: true,

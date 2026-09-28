@@ -99,6 +99,30 @@ function maxError(d, first, last, bez, u) {
   return { max, split };
 }
 
+/**
+ * O erro ponto->curva sozinho não detecta uma alça que sai do contorno entre
+ * duas amostras. Verifica também curva->polilinha em posições intermediárias.
+ */
+function curveStaysNearContour(d, first, last, bez, tolerance) {
+  const limit = tolerance * tolerance;
+  for (let step = 1; step < 8; step++) {
+    const p = bezAt(bez, step / 8);
+    let nearest = Infinity;
+    for (let i = first; i < last; i++) {
+      const a = d[i], b = d[i + 1];
+      const vx = b[0] - a[0], vy = b[1] - a[1];
+      const length2 = vx * vx + vy * vy;
+      const t = length2 ? Math.max(0, Math.min(1, ((p[0] - a[0]) * vx + (p[1] - a[1]) * vy) / length2)) : 0;
+      const dx = p[0] - a[0] - t * vx, dy = p[1] - a[1] - t * vy;
+      const distance2 = dx * dx + dy * dy;
+      if (distance2 < nearest) nearest = distance2;
+      if (nearest <= limit) break;
+    }
+    if (nearest > limit) return false;
+  }
+  return true;
+}
+
 function reparam(d, first, last, u, bez) {
   const out = [];
   for (let i = first; i <= last; i++) {
@@ -113,23 +137,33 @@ function reparam(d, first, last, u, bez) {
 
 function fitCubic(d, first, last, t1, t2, err2, out, depth) {
   if (last - first === 1) {
-    const dist = len(sub(d[last], d[first])) / 3;
-    out.push([d[first], [d[first][0] + t1[0] * dist, d[first][1] + t1[1] * dist], [d[last][0] + t2[0] * dist, d[last][1] + t2[1] * dist], d[last]]);
+    const a = d[first], b = d[last];
+    const dx = (b[0] - a[0]) / 3, dy = (b[1] - a[1]) / 3;
+    out.push([a, [a[0] + dx, a[1] + dy], [a[0] + 2 * dx, a[1] + 2 * dy], b]);
     return;
   }
   let u = chordParam(d, first, last);
   let bez = generateBezier(d, first, last, u, t1, t2);
   let e = maxError(d, first, last, bez, u);
-  if (e.max < err2) return void out.push(bez);
+  const nearContour = b => curveStaysNearContour(d, first, last, b, Math.max(0.5, Math.sqrt(err2) * 1.4));
+  if (e.max < err2 && nearContour(bez)) return void out.push(bez);
   if (e.max < err2 * 16) {
     for (let it = 0; it < 5; it++) {
       u = reparam(d, first, last, u, bez);
       bez = generateBezier(d, first, last, u, t1, t2);
       e = maxError(d, first, last, bez, u);
-      if (e.max < err2) return void out.push(bez);
+      if (e.max < err2 && nearContour(bez)) return void out.push(bez);
     }
   }
-  if (depth > 48 || e.split <= first || e.split >= last) return void out.push(bez);
+  if (e.max < err2) e.split = first + ((last - first) >> 1);
+  if (depth > 48 || e.split <= first || e.split >= last) {
+    for (let i = first; i < last; i++) {
+      const a = d[i], b = d[i + 1];
+      const dx = (b[0] - a[0]) / 3, dy = (b[1] - a[1]) / 3;
+      out.push([a, [a[0] + dx, a[1] + dy], [a[0] + 2 * dx, a[1] + 2 * dy], b]);
+    }
+    return;
+  }
   let ct = norm(sub(d[e.split - 1], d[e.split + 1]));
   if (ct[0] === 0 && ct[1] === 0) ct = norm(sub(d[e.split], d[e.split + 1]));
   fitCubic(d, first, e.split, t1, ct, err2, out, depth + 1);

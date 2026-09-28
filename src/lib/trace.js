@@ -68,21 +68,42 @@ function traceTwoTone(img, palette, p, ctx) {
   const length2 = vx * vx + vy * vy + vz * vz;
   if (length2 < 900) return null;
   const field = new Float32Array(W * H);
-  const tmp = new Float32Array(W * H);
   const d = img.data;
+  const histogram = new Uint32Array(256);
   let mixed = 0;
+  let expectedInk = 0;
   for (let i = 0; i < field.length; i++) {
     const o = i * 4;
     if (d[o + 3] < 255) return null;
-    field[i] = Math.max(-1, Math.min(1, 2 * ((d[o] - a[0]) * vx + (d[o + 1] - a[1]) * vy + (d[o + 2] - a[2]) * vz) / length2 - 1 + p.strokeBalance / 100));
-    if (Math.abs(field[i]) < 0.8) mixed++;
+    const coverage = Math.max(0, Math.min(1, ((d[o] - a[0]) * vx + (d[o + 1] - a[1]) * vy + (d[o + 2] - a[2]) * vz) / length2));
+    field[i] = coverage;
+    histogram[Math.min(255, Math.floor(coverage * 255))]++;
+    if (coverage > 0.1) expectedInk += coverage;
+    if (coverage > 0.1 && coverage < 0.9) mixed++;
   }
+  // Uma imagem com muitas cores intermediárias é provavelmente um degradê,
+  // não um logo de duas tintas: deixe o motor multicolorido tratá-la.
+  if (mixed > field.length * 0.15) return null;
+  let threshold = 0.5;
+  if (mixed > field.length / 200) {
+    let opaqueArea = 0;
+    for (let bin = 255; bin >= 0; bin--) {
+      opaqueArea += histogram[bin];
+      if (opaqueArea >= expectedInk) {
+        threshold = Math.max(0.38, Math.min(0.62, bin / 255));
+        break;
+      }
+    }
+  }
+  threshold = Math.max(0.25, Math.min(0.75, Math.round(threshold * 100) / 100 - p.strokeBalance / 200));
+  for (let i = 0; i < field.length; i++) field[i] = Math.max(-1, Math.min(1, 2 * (field[i] - threshold)));
   // Menos de um pixel: tira ruído de compressão sem fechar os contra-formas.
   // Bordas de duas cores realmente chapadas não precisam desse filtro: ele
   // apagaria traços legítimos de um pixel e cores raras.
   if (mixed > field.length / 200) {
     const sigma = 0.4 + p.smooth / 500;
-    gaussBlur(field, tmp, W, H, boxesForGauss(sigma));
+    const radii = boxesForGauss(sigma);
+    if (radii.some(radius => radius >= 1)) gaussBlur(field, new Float32Array(W * H), W, H, radii);
   }
   const loops = extractLoops(field, W, H);
   const subpaths = [];
