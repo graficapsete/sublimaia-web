@@ -7,8 +7,8 @@
  *  2. Cores de TRANSIÇÃO (o cinza entre preto e branco, o "oliva" entre amarelo e
  *     preto...) são detectadas e descartadas: elas só existem por causa do
  *     antialiasing das bordas e não são cores reais da imagem.
- *  3. Pixels que são mistura de duas cores da paleta não "votam" por cor:
- *     recebem o rótulo do vizinho confiável mais próximo (ver labels.js).
+ *  3. Pixels de mistura guardam a cobertura entre as tintas presentes localmente
+ *     (ver labels.js), sem espalhar o fundo por traços finos.
  */
 
 const LIN = new Float32Array(256);
@@ -51,6 +51,7 @@ const dist3 = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 function samplePixels(img) {
   const d = img.data;
   const counts = new Uint32Array(32768);
+  const cores = new Uint32Array(32768);
   const sums = new Float64Array(32768 * 3);
   let total = 0;
   for (let p = 0; p < d.length; p += 4) {
@@ -59,21 +60,33 @@ function samplePixels(img) {
     counts[cell]++; total++;
     const o = cell * 3;
     sums[o] += d[p]; sums[o + 1] += d[p + 1]; sums[o + 2] += d[p + 2];
+    // An interior patch is evidence of an intentional color, even when that
+    // color lies between two other inks. Edge blends lack this 2D support.
+    const pixel = p / 4, x = pixel % img.width, y = (pixel / img.width) | 0;
+    if (x > 0 && x + 1 < img.width && y > 0 && y + 1 < img.height) {
+      let flat = true;
+      for (let dy = -1; dy <= 1 && flat; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const q = p + (dy * img.width + dx) * 4;
+        if (d[q + 3] < 240 || Math.max(Math.abs(d[q] - d[p]), Math.abs(d[q + 1] - d[p + 1]), Math.abs(d[q + 2] - d[p + 2])) > 3) { flat = false; break; }
+      }
+      if (flat) cores[cell]++;
+    }
   }
   const n = counts.reduce((a, b) => a + (b > 0), 0);
-  const lab = new Float32Array(n * 3), rgb = new Uint8Array(n * 3), weight = new Uint32Array(n);
+  const lab = new Float32Array(n * 3), rgb = new Uint8Array(n * 3), weight = new Uint32Array(n), core = new Uint32Array(n);
   let k = 0;
   for (let cell = 0; cell < counts.length; cell++) {
     if (!counts[cell]) continue;
     const o = k * 3, s = cell * 3;
     weight[k] = counts[cell];
+    core[k] = cores[cell];
     rgb[o] = Math.round(sums[s] / counts[cell]);
     rgb[o + 1] = Math.round(sums[s + 1] / counts[cell]);
     rgb[o + 2] = Math.round(sums[s + 2] / counts[cell]);
     rgbToLab(rgb[o], rgb[o + 1], rgb[o + 2], lab, o);
     k++;
   }
-  return { n, lab, rgb, weight, total };
+  return { n, lab, rgb, weight, core, total };
 }
 
 /** k-means (k-means++ determinístico) em Lab. */
@@ -156,8 +169,8 @@ const clampByte = (v) => (v < 0 ? 0 : v > 255 ? 255 : Math.round(v));
 function snapRGB(rgb) {
   const mx = Math.max(rgb[0], rgb[1], rgb[2]);
   const mn = Math.min(rgb[0], rgb[1], rgb[2]);
-  if (mx <= 14) return [0, 0, 0];
-  if (mn >= 241) return [255, 255, 255];
+  if (mx <= 8 && mx - mn <= 4) return [0, 0, 0];
+  if (mn >= 249 && mx - mn <= 4) return [255, 255, 255];
   return rgb;
 }
 
@@ -173,6 +186,7 @@ const TRANS_RATIO = 0.6; // uma transição tem bem menos pixels que as cores vi
  * entries: [{rgb, lab, n}]  (modificado no lugar)
  */
 function prunePalette(entries, K, minShareN) {
+  const total = entries.reduce((sum, entry) => sum + entry.n, 0);
   const remove = (i) => entries.splice(i, 1);
   for (;;) {
     if (entries.length <= 2) break;
@@ -181,6 +195,7 @@ function prunePalette(entries, K, minShareN) {
     let bi = -1, bj = -1, bd = MERGE_DE;
     for (let i = 0; i < entries.length; i++) {
       for (let j = i + 1; j < entries.length; j++) {
+        if (entries[i].protected && entries[j].protected && dist3(entries[i].rgb, entries[j].rgb) > 6) continue;
         const d = dist3(entries[i].lab, entries[j].lab);
         if (d < bd) {
           bd = d;
@@ -192,7 +207,9 @@ function prunePalette(entries, K, minShareN) {
     if (bi >= 0) {
       const a = entries[bi], b = entries[bj];
       const n = a.n + b.n;
-      a.rgb = snapRGB([0, 1, 2].map((k) => clampByte((a.rgb[k] * a.n + b.rgb[k] * b.n) / n)));
+      a.rgb = a.protected ? a.rgb : b.protected ? b.rgb
+        : snapRGB([0, 1, 2].map((k) => clampByte((a.rgb[k] * a.n + b.rgb[k] * b.n) / n)));
+      a.protected = a.protected || b.protected;
       a.lab = labOf(a.rgb);
       a.n = n;
       remove(bj);
@@ -203,6 +220,7 @@ function prunePalette(entries, K, minShareN) {
     let cand = -1, candN = Infinity;
     for (let c = 0; c < entries.length; c++) {
       const C = entries[c];
+      if (C.protected) continue;
       let isTrans = false;
       for (let a = 0; a < entries.length && !isTrans; a++) {
         if (a === c) continue;
@@ -216,7 +234,8 @@ function prunePalette(entries, K, minShareN) {
           if (t < 0.04 || t > 0.96) continue;
           const proj = [A[0] + t * ab[0], A[1] + t * ab[1], A[2] + t * ab[2]];
           if (dist3(Cc, proj) > MIX_RESIDUAL) continue;
-          if (C.n < TRANS_RATIO * Math.min(entries[a].n, entries[b].n)) {
+          if (C.n < TRANS_RATIO * Math.min(entries[a].n, entries[b].n)
+              || (C.n < total * 0.08 && Math.min(entries[a].n, entries[b].n) > Math.max(total * 0.001, C.n * 0.2))) {
             isTrans = true;
             break;
           }
@@ -268,6 +287,37 @@ function prunePalette(entries, K, minShareN) {
  * @returns [{rgb:[r,g,b], lab:[L,a,b], share}]  (share = fração de pixels)
  */
 function extractPalette(img, K, opts = {}) {
+  const exact = new Map();
+  const solid = new Map();
+  let exactTotal = 0;
+  for (let p = 0; p < img.data.length && exact.size <= K; p += 4) {
+    const d = img.data;
+    if (d[p + 3] < 128) continue;
+    const key = (d[p] << 16) | (d[p + 1] << 8) | d[p + 2];
+    exact.set(key, (exact.get(key) || 0) + 1);
+    if (d[p + 3] === 255) solid.set(key, (solid.get(key) || 0) + 1);
+    exactTotal++;
+  }
+  // Check exact RGB values, not quantized histogram bins: a JPEG may occupy
+  // only a handful of bins while still containing many compression colors.
+  if (exact.size <= K) {
+    // Unpremultiplication can perturb edge RGB by a few units. Those pixels
+    // should use the nearby solid ink rather than create colored fringe paths.
+    for (const [key, n] of exact) {
+      if (solid.has(key)) continue;
+      let nearest = -1, distance = 6;
+      const rgb = [key >> 16, (key >> 8) & 255, key & 255];
+      for (const candidate of solid.keys()) {
+        const d = dist3(rgb, [candidate >> 16, (candidate >> 8) & 255, candidate & 255]);
+        if (d < distance) { nearest = candidate; distance = d; }
+      }
+      if (nearest >= 0) { exact.set(nearest, exact.get(nearest) + n); exact.delete(key); }
+    }
+    return [...exact].map(([key, n]) => {
+      const rgb = [key >> 16, (key >> 8) & 255, key & 255];
+      return { rgb, lab: labOf(rgb), share: n / exactTotal, protected: true };
+    }).sort((a, b) => b.share - a.share);
+  }
   const samples = samplePixels(img);
   if (samples.n === 0) return [];
   const rng = mulberry32(12345);
@@ -277,6 +327,8 @@ function extractPalette(img, K, opts = {}) {
 
   const sums = new Float64Array(km.K * 3);
   const cnt = new Float64Array(km.K);
+  const core = new Float64Array(km.K);
+  const coreSums = new Float64Array(km.K * 3);
   for (let i = 0; i < samples.n; i++) {
     const k = km.assign[i];
     const mass = samples.weight[i];
@@ -284,16 +336,21 @@ function extractPalette(img, K, opts = {}) {
     sums[k * 3 + 1] += samples.rgb[i * 3 + 1] * mass;
     sums[k * 3 + 2] += samples.rgb[i * 3 + 2] * mass;
     cnt[k] += mass;
+    core[k] += samples.core[i];
+    for (let c = 0; c < 3; c++) coreSums[k * 3 + c] += samples.rgb[i * 3 + c] * samples.core[i];
   }
   const entries = [];
   for (let k = 0; k < km.K; k++) {
     if (!cnt[k]) continue;
-    const rgb = snapRGB([0, 1, 2].map((c) => clampByte(sums[k * 3 + c] / cnt[k])));
-    entries.push({ rgb, lab: labOf(rgb), n: cnt[k] });
+    const protectedColor = core[k] >= Math.max(4, samples.total * 0.0005);
+    const rgb = protectedColor
+      ? [0, 1, 2].map(c => clampByte(coreSums[k * 3 + c] / core[k]))
+      : snapRGB([0, 1, 2].map((c) => clampByte(sums[k * 3 + c] / cnt[k])));
+    entries.push({ rgb, lab: labOf(rgb), n: cnt[k], protected: protectedColor });
   }
   prunePalette(entries, K, opts.protectRare ? 0 : Math.max(1, Math.round(samples.total * 0.0002)));
   entries.sort((a, b) => b.n - a.n);
-  return entries.map((e) => ({ rgb: e.rgb, lab: e.lab, share: e.n / samples.total }));
+  return entries.map((e) => ({ rgb: e.rgb, lab: e.lab, share: e.n / samples.total, protected: e.protected }));
 }
 
 /** Paleta fixa (modo P&B). */
@@ -304,7 +361,7 @@ function fixedPalette(rgbs) {
 /**
  * Classificador RGB -> rótulo, via tabela 32×32×32 (5 bits/canal).
  * unc[cell] = 1 quando a cor é uma MISTURA de duas cores da paleta (antialiasing):
- * esses pixels não devem escolher cor sozinhos.
+ * lut utiliza a tinta com maior cobertura quando a mistura é identificada.
  */
 function buildClassifier(palette) {
   const K = palette.length;
@@ -341,8 +398,8 @@ function buildClassifier(palette) {
         if (m < M) m++;
       }
     }
-    let mix = false;
-    for (let x = 0; x < m && !mix; x++) {
+    let mix = false, bestResidual = MIX_RESIDUAL - 2;
+    for (let x = 0; x < m; x++) {
       for (let y = x + 1; y < m; y++) {
         const A = palette[top[x]].rgb, B = palette[top[y]].rgb;
         const ab0 = B[0] - A[0], ab1 = B[1] - A[1], ab2 = B[2] - A[2];
@@ -351,9 +408,10 @@ function buildClassifier(palette) {
         const t = ((r - A[0]) * ab0 + (g - A[1]) * ab1 + (b - A[2]) * ab2) / len2;
         if (t < 0.15 || t > 0.85) continue;
         const res = Math.hypot(r - (A[0] + t * ab0), g - (A[1] + t * ab1), b - (A[2] + t * ab2));
-        if (res < MIX_RESIDUAL - 2) {
+        if (res < bestResidual) {
           mix = true;
-          break;
+          bestResidual = res;
+          lut[cell] = t <= 0.5 ? top[x] : top[y];
         }
       }
     }

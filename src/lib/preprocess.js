@@ -4,7 +4,7 @@
  * Tudo em JS puro sobre { width, height, data: Uint8ClampedArray (RGBA) }.
  *
  * Ordem usada pelo pipeline (ver pipeline.js):
- *   alfa -> cinza -> mediana (ruído/JPEG) -> auto-contraste -> ampliação Lanczos
+ *   alfa -> cinza -> mediana (ruído/JPEG) -> auto-contraste -> ampliação sem ringing
  *   -> nitidez -> limiar (P&B)
  * Remover ruído ANTES de ampliar é mais barato e mais eficaz: o ruído e os
  * blocos de JPEG existem na resolução original.
@@ -39,20 +39,25 @@ function prepareAlpha(img, mode) {
   const w = img.width, h = img.height, N = w * h;
   const queue = new Int32Array(N);
   const seen = new Uint8Array(N);
-  let head = 0, tail = 0, anyOpaque = false;
+  let head = 0, tail = 0, anyOpaque = false, anyTraceable = false;
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const at = y * w + x, p = at * 4;
-    const opaque = d[p + 3] >= 128;
-    d[p + 3] = opaque ? 255 : 0;
+    const opaque = d[p + 3] > 0;
+    if (d[p + 3] >= 128) anyTraceable = true;
     if (!opaque) continue;
     anyOpaque = true;
-    const edge = (x > 0 && d[p - 1] < 128) || (x + 1 < w && d[p + 7] < 128) ||
-      (y > 0 && d[p - w * 4 + 3] < 128) || (y + 1 < h && d[p + w * 4 + 3] < 128);
+    const edge = (x > 0 && d[p - 1] === 0) || (x + 1 < w && d[p + 7] === 0) ||
+      (y > 0 && d[p - w * 4 + 3] === 0) || (y + 1 < h && d[p + w * 4 + 3] === 0);
     if (edge) { queue[tail++] = at; seen[at] = 1; }
   }
   if (!anyOpaque) {
     const e = new Error('A imagem é totalmente transparente.');
     e.code = 'FULLY_TRANSPARENT';
+    throw e;
+  }
+  if (!anyTraceable) {
+    const e = new Error('A imagem tem apenas áreas com opacidade abaixo de 50%. Aumente a opacidade para vetorizar contornos sólidos.');
+    e.code = 'LOW_OPACITY';
     throw e;
   }
   const neighbors = new Int32Array(4);
@@ -72,7 +77,7 @@ function prepareAlpha(img, mode) {
       }
     }
   }
-  return tail > 0;
+  return true;
 }
 
 /** Após ampliar, o alfa fica com valores intermediários: volta a binário. */
@@ -271,6 +276,25 @@ function resizeLanczos(img, nw, nh) {
   return { width: nw, height: nh, data: out };
 }
 
+/** Coverage interpolation without negative lobes that invent extra contours. */
+function resizeBilinear(img, nw, nh) {
+  const { width: sw, height: sh, data } = img;
+  const out = new Uint8ClampedArray(nw * nh * 4);
+  for (let y = 0; y < nh; y++) {
+    const fy = Math.max(0, Math.min(sh - 1, (y + 0.5) * sh / nh - 0.5));
+    const y0 = Math.floor(fy), y1 = Math.min(sh - 1, y0 + 1), ty = fy - y0;
+    for (let x = 0; x < nw; x++) {
+      const fx = Math.max(0, Math.min(sw - 1, (x + 0.5) * sw / nw - 0.5));
+      const x0 = Math.floor(fx), x1 = Math.min(sw - 1, x0 + 1), tx = fx - x0;
+      const a = (y0 * sw + x0) * 4, b = (y0 * sw + x1) * 4;
+      const c = (y1 * sw + x0) * 4, d = (y1 * sw + x1) * 4, p = (y * nw + x) * 4;
+      for (let k = 0; k < 4; k++) out[p + k] = (data[a + k] * (1 - tx) + data[b + k] * tx) * (1 - ty)
+        + (data[c + k] * (1 - tx) + data[d + k] * tx) * ty;
+    }
+  }
+  return { width: nw, height: nh, data: out };
+}
+
 // ------------------------------------------------------------- Nitidez etc ---
 
 /** Máscara de nitidez (unsharp mask) com desfoque [1 2 1]/4 separável. */
@@ -373,6 +397,7 @@ module.exports = {
   medianFilter,
   autoLevels,
   resizeLanczos,
+  resizeBilinear,
   unsharp,
   otsu,
   applyThreshold,

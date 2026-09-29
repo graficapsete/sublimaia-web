@@ -130,7 +130,9 @@ function reparam(d, first, last, u, bez) {
     const q = bezAt(bez, t), q1 = bezD1(bez, t), q2 = bezD2(bez, t);
     const num = (q[0] - d[i][0]) * q1[0] + (q[1] - d[i][1]) * q1[1];
     const den = q1[0] * q1[0] + q1[1] * q1[1] + (q[0] - d[i][0]) * q2[0] + (q[1] - d[i][1]) * q2[1];
-    out.push(Math.abs(den) < 1e-12 ? t : Math.min(1, Math.max(0, t - num / den)));
+    const next = Math.abs(den) < 1e-12 ? t : Math.min(1, Math.max(0, t - num / den));
+    if (out.length && next <= out[out.length - 1]) return null;
+    out.push(next);
   }
   return out;
 }
@@ -149,7 +151,9 @@ function fitCubic(d, first, last, t1, t2, err2, out, depth) {
   if (e.max < err2 && nearContour(bez)) return void out.push(bez);
   if (e.max < err2 * 16) {
     for (let it = 0; it < 5; it++) {
-      u = reparam(d, first, last, u, bez);
+      const next = reparam(d, first, last, u, bez);
+      if (!next) break;
+      u = next;
       bez = generateBezier(d, first, last, u, t1, t2);
       e = maxError(d, first, last, bez, u);
       if (e.max < err2 && nearContour(bez)) return void out.push(bez);
@@ -373,7 +377,7 @@ function fitClosedPath(loop, opts) {
   // afia os cantos arredondados pelo borrão dos campos
   if (corners.length && opts.sharpen !== false) {
     const m = Math.max(2, opts.cornerRound | 0);
-    const sh = sharpenCorners(pts, corners, m, Math.max(6, m * 2), m * 3 + 2);
+    const sh = sharpenCorners(pts, corners, m, Math.max(6, m * 2), Math.min(m * 3 + 2, tol * 2));
     pts = sh.pts;
     corners.length = 0;
     corners.push(...sh.corners);
@@ -398,7 +402,7 @@ function fitClosedPath(loop, opts) {
   let workN = nn;
   if (smoothBreak.size && arc > 0) {
     const rs = resample(pts, 1, true);
-    const sigma = Math.max(0.8, Math.min(arc, rs.total / 20));
+    const sigma = Math.min(arc, rs.total / 20);
     work = smoothClosed(rs.pts, sigma);
     workN = work.length;
     workBreaks = [0, workN >> 1];
@@ -421,7 +425,7 @@ function fitClosedPath(loop, opts) {
     // trecho entre cantos: reamostra e suaviza com as pontas fixas
     if (!smoothBreak.size && arc > 0 && piece.length > 6) {
       const rs = resample(piece, 1, false);
-      const sigma = Math.max(0.8, Math.min(arc, rs.total / 6));
+      const sigma = Math.min(arc, rs.total / 6);
       piece = smoothOpen(rs.pts, sigma);
     }
     const m = piece.length;

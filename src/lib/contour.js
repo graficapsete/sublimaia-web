@@ -127,8 +127,10 @@ function extractLoops(hf, lw, lh) {
         case 3: case 12: link(left, right); break;
         case 6: case 9: link(top, bottom); break;
         case 5: case 10: {
-          const centerIn = v0 + v1 + v2 + v3 > 0;
-          if ((c === 5) === centerIn) { link(top, right); link(bottom, left); }
+          // Bilinear saddle (asymptotic decider), not the arithmetic mean:
+          // a single strong corner must not bridge two separate thin marks.
+          const determinant = v0 * v2 - v1 * v3;
+          if (determinant > 0) { link(top, right); link(bottom, left); }
           else { link(left, top); link(right, bottom); }
           break;
         }

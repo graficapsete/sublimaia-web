@@ -2,15 +2,15 @@
 /**
  * Mapa de rótulos: cada pixel recebe o índice de uma cor da paleta.
  *  - K (= palette.length) é o rótulo especial "transparente".
- *  - Pixels de MISTURA (antialiasing) recebem o rótulo do vizinho confiável
- *    mais próximo, em vez de "inventar" uma cor intermediária.
+ *  - Misturas são resolvidas pela cobertura entre tintas; a cobertura contínua
+ *    é recuperada usando somente cores presentes na vizinhança.
  *  - Manchas minúsculas são absorvidas pelos vizinhos.
  */
 const { buildClassifier } = require('./color');
 
 const UNK = 254;
 
-/** Preenche pixels UNK com o rótulo do vizinho conhecido mais próximo (BFS multi-fonte). */
+/** Preenche manchas removidas com o vizinho conhecido mais próximo (BFS multi-fonte). */
 function propagate(labels, w, h) {
   const N = w * h;
   const queue = new Int32Array(N);
@@ -46,23 +46,63 @@ function buildLabelMap(img, palette) {
   const { width: w, height: h, data: d } = img;
   const N = w * h;
   const K = palette.length;
-  const { lut, unc } = buildClassifier(palette);
+  const { lut } = buildClassifier(palette);
   const labels = new Uint8Array(N);
-  let anyUnk = false;
+  const exact = new Map(palette.map((c, i) => [(c.rgb[0] << 16) | (c.rgb[1] << 8) | c.rgb[2], i]));
   for (let i = 0; i < N; i++) {
     const p = i * 4;
-    if (d[p + 3] < 128) {
+    if (d[p + 3] === 0) {
       labels[i] = K;
       continue;
     }
+    const exactLabel = exact.get((d[p] << 16) | (d[p + 1] << 8) | d[p + 2]);
+    if (exactLabel !== undefined) { labels[i] = exactLabel; continue; }
     const cell = ((d[p] >> 3) << 10) | ((d[p + 1] >> 3) << 5) | (d[p + 2] >> 3);
-    if (unc[cell]) {
-      labels[i] = UNK;
-      anyUnk = true;
-    } else labels[i] = lut[cell];
+    // Resolve antialiasing by measured coverage. BFS from opaque seeds erases
+    // thin features whose entire width consists of partially covered pixels.
+    labels[i] = lut[cell];
   }
-  if (anyUnk) propagate(labels, w, h);
   return labels;
+}
+
+/** Recover continuous coverage at boundaries between locally present inks. */
+function buildCoverageMap(img, palette, labels, factor = 1) {
+  const { width: w, height: h, data } = img, N = w * h, K = palette.length;
+  const secondary = new Uint8Array(N).fill(K);
+  const weight = new Float32Array(N).fill(1);
+  const neighbors = new Uint8Array(K);
+  const reach = Math.min(4, Math.max(1, Math.ceil(factor)));
+  const offsets = reach === 1 ? [-1, 0, 1] : [-reach, -1, 0, 1, reach];
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x, primary = labels[i];
+    if (primary === K) continue;
+    const p = i * 4, a = palette[primary].rgb;
+    const dr = data[p] - a[0], dg = data[p + 1] - a[1], db = data[p + 2] - a[2];
+    let bestError = dr * dr + dg * dg + db * db;
+    if (bestError < 4) continue;
+    let count = 0;
+    for (const dy of offsets) for (const dx of offsets) {
+      if (x + dx < 0 || x + dx >= w || y + dy < 0 || y + dy >= h) continue;
+      const candidate = labels[(y + dy) * w + x + dx];
+      if (candidate === primary || candidate === K) continue;
+      let found = false;
+      for (let j = 0; j < count; j++) if (neighbors[j] === candidate) found = true;
+      if (found) continue;
+      neighbors[count++] = candidate;
+      const b = palette[candidate].rgb;
+      const vr = b[0] - a[0], vg = b[1] - a[1], vb = b[2] - a[2];
+      const length2 = vr * vr + vg * vg + vb * vb;
+      if (length2 < 36) continue;
+      const t = Math.max(0, Math.min(1, (dr * vr + dg * vg + db * vb) / length2));
+      const error = (dr - t * vr) ** 2 + (dg - t * vg) ** 2 + (db - t * vb) ** 2;
+      if (t > 0 && t < 1 && error < Math.min(bestError, 144)) {
+        bestError = error;
+        secondary[i] = candidate;
+        weight[i] = 1 - t;
+      }
+    }
+  }
+  return { secondary, weight };
 }
 
 /** Remove componentes conexos (4-vizinhança) menores que minArea. */
@@ -122,4 +162,4 @@ function detectBackgroundLabel(labels, w, h, K) {
   return best >= 0 && bn >= total * 0.5 ? best : -1;
 }
 
-module.exports = { buildLabelMap, despeckle, propagate, detectBackgroundLabel, UNK };
+module.exports = { buildLabelMap, buildCoverageMap, despeckle, propagate, detectBackgroundLabel, UNK };

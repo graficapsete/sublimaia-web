@@ -85,7 +85,7 @@ function runPipeline(job, progress = () => {}) {
   // residual quase idêntica à tinta clara. Não confundir isso com um destaque
   // pequeno de cor realmente diferente.
   const twoTonePalette = sourcePalette && sourcePalette.length > 2
-    && sourcePalette.slice(2).every(c => c.share < 0.001 && sourcePalette.slice(0, 2).some(d =>
+    && sourcePalette.slice(2).every(c => !c.protected && c.share < 0.001 && sourcePalette.slice(0, 2).some(d =>
       Math.hypot(c.lab[0] - d.lab[0], c.lab[1] - d.lab[1], c.lab[2] - d.lab[2]) < 18))
     ? sourcePalette.slice(0, 2) : sourcePalette;
   if (p.mode === 'color' && !hasAlpha && twoTonePalette.length === 2) {
@@ -98,11 +98,12 @@ function runPipeline(job, progress = () => {}) {
     }
   }
 
+  const sourceImage = img;
   const size = P.computeWorkSize(img.width, img.height, p.upscale, MAX_WORK_PIXELS);
   if (size.width !== img.width || size.height !== img.height) {
     progress('resize', 35, { w: size.width, h: size.height });
-    img = P.resizeLanczos(img, size.width, size.height);
-    if (hasAlpha) P.binarizeAlpha(img);
+    img = P.resizeBilinear(img, size.width, size.height);
+    // Alpha contains measured edge coverage. Keep it continuous until tracing.
   }
 
   if (p.sharpen > 0) {
@@ -117,7 +118,8 @@ function runPipeline(job, progress = () => {}) {
   }
 
   progress('trace', 55);
-  const model = traceImage(img, p, { factor: size.factor, outWidth, outHeight, palette: sourcePalette }, (stage, pct) =>
+  const model = traceImage(img, p, { factor: size.factor, outWidth, outHeight, palette: sourcePalette,
+    sourceImage: p.mode === 'bw' ? null : sourceImage }, (stage, pct) =>
     progress(stage, 55 + Math.round((pct / 100) * 40))
   );
 

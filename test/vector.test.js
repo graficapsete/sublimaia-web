@@ -95,11 +95,13 @@ test('controle de espessura preserva configuração e altera somente a cobertura
   const count = pixels => {
     let n = 0;
     for (let y = 16; y < 30; y++) for (let x = 6; x < 84; x++) {
-      if (pixels[(y * 96 + x) * 4] > 170) n++;
+      // Integrate coverage: subpixel expansion can be real without crossing
+      // an arbitrary byte threshold in any individual raster pixel.
+      n += Math.max(0, pixels[(y * 96 + x) * 4] - 100) / 135;
     }
     return n;
   };
-  assert.ok(count(b) > count(a), 'valor positivo deve recuperar cobertura em traços finos');
+  assert.ok(count(b) > count(a) + 5, 'valor positivo deve recuperar cobertura em traços finos');
   assert.deepEqual(thin.model.palette, thick.model.palette);
 });
 
