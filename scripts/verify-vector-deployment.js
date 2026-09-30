@@ -29,14 +29,14 @@ async function main() {
     exportId = result.id;
     console.log(`${fixture.name}: OK (${result.stats.ms} ms no servidor)`);
   }
-  for (const format of ['svg', 'pdf', 'eps', 'dxf', 'png']) {
+  // PNG is rendered by the browser canvas, not by /api/export.
+  for (const format of ['svg', 'pdf', 'eps', 'dxf']) {
     const response = await fetch(`${base}/api/export/${exportId}`, { method: 'POST',
       headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ format }) });
     assert.equal(response.status, 200, format);
     const bytes = Buffer.from(await response.arrayBuffer());
     assert.ok(bytes.length > 100, format);
-    if (format === 'png') assert.deepEqual([...bytes.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
-    else assert.match(bytes.toString('utf8'), { svg: /<svg/, pdf: /^%PDF/, eps: /^%!PS/, dxf: /ENTITIES/ }[format]);
+    assert.match(bytes.toString('utf8'), { svg: /<svg/, pdf: /^%PDF/, eps: /^%!PS/, dxf: /ENTITIES/ }[format]);
     console.log(`export ${format}: OK`);
   }
 }

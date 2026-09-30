@@ -59,6 +59,7 @@
 
   // Imagens maiores que isso são reduzidas ao carregar (protege memória/tempo).
   const MAX_INPUT_PIXELS = 8000000;
+  const MAX_UPLOAD_BYTES = 30 * 1024 * 1024;
   const AUTO_DELAY_MS = 450;
 
   // ---------------------------------------------------------------- presets ---
@@ -320,6 +321,10 @@
   };
 
   async function loadImageBlob(blob, name) {
+    if (blob.size > MAX_UPLOAD_BYTES) {
+      toast(t('err.FILE_TOO_LARGE'), 'error');
+      return;
+    }
     const url = URL.createObjectURL(blob);
     const img = new Image();
     img.src = url;
@@ -337,12 +342,9 @@
       return;
     }
 
-    if (ow * oh > MAX_INPUT_PIXELS) {
-      URL.revokeObjectURL(url);
-      toast(t('err.IMAGE_TOO_LARGE'), 'error');
-      return;
-    }
-    const cw = ow, ch = oh;
+    const factor = Math.min(1, Math.sqrt(MAX_INPUT_PIXELS / (ow * oh)));
+    const cw = Math.max(1, Math.floor(ow * factor));
+    const ch = Math.max(1, Math.floor(oh * factor));
     const canvas = document.createElement('canvas');
     canvas.width = cw;
     canvas.height = ch;
@@ -358,7 +360,7 @@
       baseName: name.replace(/\.[^.]+$/, '') || t('name.default'),
       width: ow,
       height: oh,
-      reduced: false,
+      reduced: cw !== ow || ch !== oh,
       imageData,
       url,
     };
@@ -371,6 +373,7 @@
     el.run.disabled = false;
     state.fitMode = true;
     layout();
+    if (state.image.reduced) toast(t('toast.imageReduced', { w: cw, h: ch }), 'ok');
     runVectorize();
   }
 

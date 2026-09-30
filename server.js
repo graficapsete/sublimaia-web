@@ -11,7 +11,8 @@ const app = express();
 const port = Number(process.env.PORT || 3000);
 const jobs = new Map();
 let vectorBusy = false;
-app.use('/api/vectorize', express.json({ limit: '46mb' }));
+// A 30 MiB upload is decoded to RGBA and base64 encoded (~40 MiB) by the browser.
+app.use('/api/vectorize', express.json({ limit: '48mb' }));
 app.use('/api/halftone', express.json({ limit: '17mb' }));
 app.use(express.json({ limit: '70mb' }));
 app.use(express.static('public'));
@@ -181,7 +182,7 @@ app.post('/api/export/:id', express.json({ limit: '20mb' }), (req, res) => {
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
 app.use((err, req, res, next) => {
-  if (req.path === '/api/vectorize' && err.type === 'entity.too.large') return res.status(413).json({ ok: false, error: 'A imagem ultrapassa o limite de envio para vetorização.', errorCode: 'IMAGE_TOO_LARGE' });
+  if (req.path === '/api/vectorize' && err.type === 'entity.too.large') return res.status(413).json({ ok: false, error: 'A imagem excede 30 MB. Reduza o tamanho do arquivo para enviar.', errorCode: 'FILE_TOO_LARGE' });
   if (req.path === '/api/halftone' && err.type === 'entity.too.large') return res.status(413).json({ error: 'O arquivo excede 12 MB. Reduza a arte antes de enviar.', code: 'INPUT_TOO_LARGE' });
   next(err);
 });

@@ -32,6 +32,18 @@ test('API de vetorização mantém resposta/exportação e rejeita imagens acima
   } finally { await new Promise(resolve => server.close(resolve)); }
 });
 
+test('API aceita o corpo base64 de uma arte próxima de 30 MB', async () => {
+  const server = app.listen(0);
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const encoded = Buffer.alloc(35 * 1024 * 1024).toString('base64');
+    const response = await fetch(base + '/api/vectorize', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ width: 1, height: 1, data: encoded }) });
+    assert.equal(response.status, 400);
+    assert.match((await response.json()).error, /Dados RGBA inválidos/, 'o corpo passou do limite do Express e chegou à validação da imagem');
+  } finally { await new Promise(resolve => server.close(resolve)); }
+});
+
 test('worker deixa /health livre, limita concorrência e libera após cancelamento', { timeout: 30000 }, async () => {
   const server = app.listen(0);
   const base = `http://127.0.0.1:${server.address().port}`;
